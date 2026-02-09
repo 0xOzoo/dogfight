@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dogfight - Combat Flight Simulator</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+
+    <div id="hud" class="hidden">
+      <div id="hud-left">
+        <div id="speed-indicator" class="hud-panel">
+          <span class="hud-label">SPD</span>
+          <span id="speed-value" class="hud-value">0</span>
+          <span class="hud-unit">KTS</span>
+        </div>
+        <div id="altitude-indicator" class="hud-panel">
+          <span class="hud-label">ALT</span>
+          <span id="altitude-value" class="hud-value">0</span>
+          <span class="hud-unit">FT</span>
+        </div>
+        <div id="throttle-indicator" class="hud-panel">
+          <span class="hud-label">THR</span>
+          <div id="throttle-bar-bg">
+            <div id="throttle-bar"></div>
+          </div>
+          <span id="throttle-value" class="hud-value">0</span>
+          <span class="hud-unit">%</span>
+        </div>
+      </div>
+
+      <div id="hud-center">
+        <div id="crosshair">
+          <div class="crosshair-line crosshair-top"></div>
+          <div class="crosshair-line crosshair-bottom"></div>
+          <div class="crosshair-line crosshair-left"></div>
+          <div class="crosshair-line crosshair-right"></div>
+          <div class="crosshair-dot"></div>
+        </div>
+        <div id="pitch-ladder"></div>
+      </div>
+
+      <div id="hud-right">
+        <div id="g-indicator" class="hud-panel">
+          <span class="hud-label">G</span>
+          <span id="g-value" class="hud-value">1.0</span>
+        </div>
+        <div id="heading-indicator" class="hud-panel">
+          <span class="hud-label">HDG</span>
+          <span id="heading-value" class="hud-value">000</span>
+        </div>
+        <div id="ammo-indicator" class="hud-panel">
+          <span class="hud-label">GUN</span>
+          <span id="ammo-value" class="hud-value">500</span>
+        </div>
+        <div id="missile-indicator" class="hud-panel">
+          <span class="hud-label">MSL</span>
+          <span id="missile-value" class="hud-value">4</span>
+        </div>
+        <div id="flare-indicator" class="hud-panel">
+          <span class="hud-label">FLR</span>
+          <span id="flare-value" class="hud-value">30</span>
+        </div>
+      </div>
+
+      <div id="killfeed"></div>
+
+      <div id="missile-warning" class="hidden">
+        <div id="missile-warning-text">MISSILE INCOMING</div>
+        <div id="missile-warning-hint">DEPLOY FLARES [X]</div>
+      </div>
+
+      <div id="ammo-replenish" class="hidden">AMMO REPLENISHED</div>
+
+      <div id="hud-bottom">
+        <div id="health-bar-container">
+          <div id="health-bar"></div>
+        </div>
+        <div id="warnings"></div>
+      </div>
+
+      <div id="radar-container">
+        <canvas id="radar-canvas" width="200" height="200"></canvas>
+      </div>
+
+      <div id="target-info" class="hidden">
+        <div id="target-lock-indicator"></div>
+        <span id="target-distance"></span>
+      </div>
+
+      <div id="score-display">
+        <span class="hud-label">SCORE</span>
+        <span id="score-value" class="hud-value">0</span>
+      </div>
+
+      <div id="wave-display" class="hidden">
+        <span id="wave-text"></span>
+      </div>
+    </div>
+
+    <div id="g-overlay"></div>
+
+    <div id="menu-screen">
+      <h1>DOGFIGHT</h1>
+      <p class="subtitle">Combat Flight Simulator</p>
+      <button id="start-btn">START MISSION</button>
+      <div class="controls-info">
+        <h3>CONTROLS</h3>
+        <p><b>Mouse</b> - Aim (plane follows cursor)</p>
+        <p><b>W/S</b> - Pitch Down/Up</p>
+        <p><b>A/D</b> - Roll Right/Left</p>
+        <p><b>Q/E</b> - Yaw Right/Left</p>
+        <p><b>Shift/Ctrl</b> - Throttle Up/Down</p>
+        <p><b>LMB / Space</b> - Fire Machine Gun</p>
+        <p><b>RMB</b> - Zoom (hold for gun aiming)</p>
+        <p><b>F</b> - Fire Missile (when locked)</p>
+        <p><b>X</b> - Deploy Flares</p>
+        <p><b>T</b> - Cycle Target</p>
+        <p><b>V</b> - Toggle Camera View</p>
+        <p><b>Esc</b> - Pause</p>
+      </div>
+    </div>
+
+    <div id="pause-screen" class="hidden">
+      <h2>PAUSED</h2>
+      <button id="resume-btn">RESUME</button>
+    </div>
+
+    <div id="gameover-screen" class="hidden">
+      <h2 id="gameover-title">MISSION OVER</h2>
+      <p id="gameover-score"></p>
+      <button id="restart-btn">RESTART</button>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
