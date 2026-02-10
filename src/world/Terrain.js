@@ -20,6 +20,7 @@ export class Terrain {
       this.addCanyonBridges();
       this.addDesertVillages();
       this.addMilitaryBase();
+      this.addDesertFeatures();
     } else {
       this.generate();
       this.addTrees();
@@ -626,6 +627,20 @@ export class Terrain {
         this.scene.add(rail);
       }
 
+      // Deck colliders along bridge length
+      const deckColCount = Math.max(3, Math.floor(length / 35));
+      for (let c = 0; c <= deckColCount; c++) {
+        const t = c / deckColCount;
+        const cx = spot.x1 + dx * t;
+        const cz = spot.z1 + dz * t;
+        this.buildingColliders.push({
+          x: cx, z: cz,
+          radius: deckWidth / 2 + 2,
+          bottom: deckHeight - 3,
+          top: deckHeight + 5,
+        });
+      }
+
       // Support pillars - thicker for wider bridges
       const pillarCount = Math.max(2, Math.floor(length / 70));
       for (let p = 0; p <= pillarCount; p++) {
@@ -643,6 +658,14 @@ export class Terrain {
         pillar.position.set(px, groundH + pillarH / 2, pz);
         pillar.castShadow = true;
         this.scene.add(pillar);
+
+        // Pillar collider
+        this.buildingColliders.push({
+          x: px, z: pz,
+          radius: pillarWidth / 2 + 2,
+          bottom: groundH,
+          top: deckHeight,
+        });
       }
 
       // Cable/arch above deck (suspension bridge look)
@@ -670,6 +693,13 @@ export class Terrain {
         tower.position.set(ex, deckHeight + towerH / 2, ez);
         tower.castShadow = true;
         this.scene.add(tower);
+
+        this.buildingColliders.push({
+          x: ex, z: ez,
+          radius: 5,
+          bottom: deckHeight,
+          top: deckHeight + towerH,
+        });
       }
     }
   }
@@ -688,14 +718,17 @@ export class Terrain {
     this._navalZ = 2500;
     this._destroyerX = 4200;
     this._destroyerZ = 3200;
-    this._airbaseX = -2500;
-    this._airbaseZ = -1500;
+    this._airbaseX = -3000;
+    this._airbaseZ = -3500;
     this._oasisX = -2000;
     this._oasisZ = -500;
     this._villages = [
-      { x: -3500, z: -3000 },
-      { x: 2500, z: -2500 },
-      { x: -1000, z: -4000 },
+      { x: -1500, z: -700 },   // Oasis settlement
+      { x: -1000, z: -2200 },  // Central desert
+      { x: 800, z: -2500 },    // Northeast mesa
+      { x: -3200, z: -2000 },  // Western canyon
+      { x: 2500, z: -1800 },   // Eastern desert
+      { x: -500, z: -4000 },   // Far north
     ];
 
     // River path from oasis to coast
@@ -833,21 +866,21 @@ export class Terrain {
         }
       }
 
-      // 6c. Flatten airbase area (long rectangle for airstrip)
+      // 6c. Flatten airbase area (large rectangle for full military compound)
       const abDx = Math.abs(x - this._airbaseX);
-      const abDz = Math.abs(z - this._airbaseZ);
-      if (abDx < 1600 && abDz < 400) {
-        const abFx = Math.max(0, 1 - abDx / 1600);
-        const abFz = Math.max(0, 1 - abDz / 400);
-        const abFlat = abFx * abFz;
-        height = height * (1 - abFlat * 0.9) + 0.06 * abFlat;
+      const abDz = Math.abs(z - (this._airbaseZ - 200)); // offset center to cover buildings south of runway
+      if (abDx < 1900 && abDz < 800) {
+        const abFx = Math.max(0, 1 - abDx / 1900);
+        const abFz = Math.max(0, 1 - abDz / 800);
+        const abFlat = Math.min(1, abFx * abFz * 2.5); // steep transition, hard flat center
+        height = height * (1 - abFlat) + 0.06 * abFlat;
       }
 
       // 6d. Flatten desert village areas
       for (const v of this._villages) {
         const vDist = Math.sqrt((x - v.x) ** 2 + (z - v.z) ** 2);
-        if (vDist < 350) {
-          const vFlat = Math.max(0, 1 - vDist / 350);
+        if (vDist < 450) {
+          const vFlat = Math.max(0, 1 - vDist / 450);
           height = height * (1 - vFlat * vFlat * 0.85) + 0.05 * vFlat * vFlat;
         }
       }
@@ -926,8 +959,8 @@ export class Terrain {
       }
 
       // Airbase — dark tarmac tint
-      if (abDx < 1600 && abDz < 400 && height > WATER_LEVEL) {
-        const abBlend = Math.max(0, 1 - Math.max(abDx / 1600, abDz / 400)) * 0.6;
+      if (abDx < 1900 && abDz < 800 && height > WATER_LEVEL) {
+        const abBlend = Math.max(0, 1 - Math.max(abDx / 1900, abDz / 800)) * 0.6;
         r = r * (1 - abBlend) + 0.35 * abBlend;
         g = g * (1 - abBlend) + 0.33 * abBlend;
         b = b * (1 - abBlend) + 0.30 * abBlend;
@@ -952,7 +985,7 @@ export class Terrain {
 
   addDesertVegetation() {
     const { SIZE, MAX_HEIGHT, WATER_LEVEL } = TERRAIN;
-    const maxBushes = 2500;
+    const maxBushes = 4500;
 
     const bushGeom = new THREE.IcosahedronGeometry(1, 0);
     const bushMat = new THREE.MeshLambertMaterial({ color: 0x8a7a3a });
@@ -1036,12 +1069,12 @@ export class Terrain {
       if (cityDist < 1500) continue;
       const navDist = Math.sqrt((x - this._navalX) ** 2 + (z - this._navalZ) ** 2);
       if (navDist < 600) continue;
-      const abDist = Math.abs(x - this._airbaseX) < 1600 && Math.abs(z - this._airbaseZ) < 400;
+      const abDist = Math.abs(x - this._airbaseX) < 1900 && Math.abs(z - (this._airbaseZ - 200)) < 800;
       if (abDist) continue;
 
-      if (this.seededRandom(seed + 2) > 0.15) continue;
+      if (this.seededRandom(seed + 2) > 0.22) continue;
 
-      const scale = 3 + this.seededRandom(seed + 3) * 6;
+      const scale = 4 + this.seededRandom(seed + 3) * 10;
       dummy.position.set(x, height + scale * 0.3, z);
       dummy.scale.set(scale, scale * 0.6, scale);
       dummy.rotation.set(0, this.seededRandom(seed + 4) * Math.PI * 2, 0);
@@ -1263,6 +1296,20 @@ export class Terrain {
         deck.castShadow = true;
         this.scene.add(deck);
 
+        // Highway deck colliders
+        const hwColCount = Math.max(3, Math.floor(length / 40));
+        for (let c = 0; c <= hwColCount; c++) {
+          const t = c / hwColCount;
+          const cx = p1.x + dx * t;
+          const cz = p1.z + dz * t;
+          this.buildingColliders.push({
+            x: cx, z: cz,
+            radius: 24,
+            bottom: deckH - 2,
+            top: deckH + 4,
+          });
+        }
+
         // Center line
         const lineGeom = new THREE.BoxGeometry(1, 3.2, length + 20);
         const line = new THREE.Mesh(lineGeom, lineMat);
@@ -1285,6 +1332,13 @@ export class Terrain {
           pillar.position.set(px, groundH + pillarH / 2, pz);
           pillar.castShadow = true;
           this.scene.add(pillar);
+
+          this.buildingColliders.push({
+            x: px, z: pz,
+            radius: 5,
+            bottom: groundH,
+            top: deckH,
+          });
         }
 
         // Railings
@@ -1539,6 +1593,20 @@ export class Terrain {
         this.scene.add(rail);
       }
 
+      // Deck colliders along bridge length
+      const deckColCount = Math.max(3, Math.floor(length / 35));
+      for (let c = 0; c <= deckColCount; c++) {
+        const t = c / deckColCount;
+        const cx = spot.x1 + dx * t;
+        const cz = spot.z1 + dz * t;
+        this.buildingColliders.push({
+          x: cx, z: cz,
+          radius: spot.deckWidth / 2 + 2,
+          bottom: deckHeight - 3,
+          top: deckHeight + 5,
+        });
+      }
+
       // Support pillars
       const pillarCount = Math.max(2, Math.floor(length / 70));
       for (let p = 0; p <= pillarCount; p++) {
@@ -1555,6 +1623,14 @@ export class Terrain {
         pillar.position.set(px, groundH + pillarH / 2, pz);
         pillar.castShadow = true;
         this.scene.add(pillar);
+
+        // Pillar collider
+        this.buildingColliders.push({
+          x: px, z: pz,
+          radius: pw / 2 + 2,
+          bottom: groundH,
+          top: deckHeight,
+        });
       }
 
       // Suspension cables
@@ -1578,6 +1654,13 @@ export class Terrain {
         tower.position.set(ex, deckHeight + 32.5, ez);
         tower.castShadow = true;
         this.scene.add(tower);
+
+        this.buildingColliders.push({
+          x: ex, z: ez,
+          radius: 5,
+          bottom: deckHeight,
+          top: deckHeight + 65,
+        });
       }
     }
   }
@@ -1586,36 +1669,47 @@ export class Terrain {
     const { WATER_LEVEL } = TERRAIN;
 
     const wallMat = new THREE.MeshLambertMaterial({ color: 0xc4a882 });
+    const wallMat2 = new THREE.MeshLambertMaterial({ color: 0xb89a70 });
     const roofMat = new THREE.MeshLambertMaterial({ color: 0xa08060 });
     const darkMat = new THREE.MeshLambertMaterial({ color: 0x8a7a5a });
+    const towerMat = new THREE.MeshLambertMaterial({ color: 0xd4c4a0 });
     const boxGeom = new THREE.BoxGeometry(1, 1, 1);
+    const cylGeom = new THREE.CylinderGeometry(1, 1, 1, 8);
 
-    const wallInstance = new THREE.InstancedMesh(boxGeom, wallMat, 300);
-    const roofInstance = new THREE.InstancedMesh(boxGeom, roofMat, 300);
-    const darkInstance = new THREE.InstancedMesh(boxGeom, darkMat, 100);
+    const wallInstance = new THREE.InstancedMesh(boxGeom, wallMat, 800);
+    const wall2Instance = new THREE.InstancedMesh(boxGeom, wallMat2, 400);
+    const roofInstance = new THREE.InstancedMesh(boxGeom, roofMat, 800);
+    const darkInstance = new THREE.InstancedMesh(boxGeom, darkMat, 300);
+    const towerInstance = new THREE.InstancedMesh(cylGeom, towerMat, 40);
     wallInstance.castShadow = true;
+    wall2Instance.castShadow = true;
+    towerInstance.castShadow = true;
 
     const dummy = new THREE.Object3D();
-    let wIdx = 0, rIdx = 0, dIdx = 0;
+    let wIdx = 0, w2Idx = 0, rIdx = 0, dIdx = 0, twIdx = 0;
 
-    for (const village of this._villages) {
+    for (let vi = 0; vi < this._villages.length; vi++) {
+      const village = this._villages[vi];
       const vx = village.x, vz = village.z;
-      const buildingCount = 25 + Math.floor(this.seededRandom(vx * 0.01 + vz * 0.01) * 20);
+      const seed0 = (vi + 1) * 347.13;
+      const buildingCount = 45 + Math.floor(this.seededRandom(seed0) * 30);
+      const villageRadius = 300;
 
-      for (let b = 0; b < buildingCount && wIdx < 300; b++) {
+      // === Main buildings ===
+      for (let b = 0; b < buildingCount && wIdx < 800; b++) {
         const seed = (wIdx + 70000) * 59.17;
         const angle = this.seededRandom(seed) * Math.PI * 2;
-        const dist = this.seededRandom(seed + 1) * 250;
+        const dist = 20 + this.seededRandom(seed + 1) * (villageRadius - 30);
 
         const bx = vx + Math.cos(angle) * dist;
         const bz = vz + Math.sin(angle) * dist;
         const bh = this.getHeightAt(bx, bz);
-
         if (bh < WATER_LEVEL + 2) continue;
 
-        const width = 8 + this.seededRandom(seed + 2) * 12;
-        const height = 5 + this.seededRandom(seed + 3) * 7;
-        const depth = 8 + this.seededRandom(seed + 4) * 12;
+        // Desert buildings: 12-30m wide, 8-25m tall
+        const width = 12 + this.seededRandom(seed + 2) * 18;
+        const height = 8 + this.seededRandom(seed + 3) * 17;
+        const depth = 12 + this.seededRandom(seed + 4) * 18;
         const rotation = Math.floor(this.seededRandom(seed + 5) * 4) * Math.PI / 2;
 
         dummy.position.set(bx, bh + height / 2, bz);
@@ -1624,58 +1718,127 @@ export class Terrain {
         dummy.updateMatrix();
         wallInstance.setMatrixAt(wIdx, dummy.matrix);
 
-        dummy.position.set(bx, bh + height + 0.5, bz);
-        dummy.scale.set(width + 1, 1, depth + 1);
+        // Flat roof parapet
+        dummy.position.set(bx, bh + height + 0.8, bz);
+        dummy.scale.set(width + 1.5, 1.5, depth + 1.5);
         dummy.updateMatrix();
         roofInstance.setMatrixAt(rIdx++, dummy.matrix);
 
         wIdx++;
+
+        // Some buildings get a second storey offset
+        if (this.seededRandom(seed + 6) > 0.65 && w2Idx < 400) {
+          const h2 = 6 + this.seededRandom(seed + 7) * 10;
+          const offX = (this.seededRandom(seed + 8) - 0.5) * width * 0.3;
+          const offZ = (this.seededRandom(seed + 9) - 0.5) * depth * 0.3;
+          dummy.position.set(bx + offX, bh + height + h2 / 2, bz + offZ);
+          dummy.scale.set(width * 0.6, h2, depth * 0.6);
+          dummy.rotation.set(0, rotation, 0);
+          dummy.updateMatrix();
+          wall2Instance.setMatrixAt(w2Idx++, dummy.matrix);
+        }
       }
 
-      // Market structure at village center
-      if (dIdx < 100) {
+      // === Minaret / Watchtower (tall landmark per village) ===
+      if (twIdx < 40) {
         const ch = this.getHeightAt(vx, vz);
-        dummy.position.set(vx, ch + 4, vz);
-        dummy.scale.set(15, 0.5, 15);
+        const minaretH = 45 + this.seededRandom(seed0 + 10) * 25;
+        // Main tower shaft
+        dummy.position.set(vx, ch + minaretH / 2, vz);
+        dummy.scale.set(4, minaretH, 4);
         dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        towerInstance.setMatrixAt(twIdx++, dummy.matrix);
+
+        // Balcony ring near top
+        if (twIdx < 40) {
+          dummy.position.set(vx, ch + minaretH * 0.8, vz);
+          dummy.scale.set(7, 2, 7);
+          dummy.updateMatrix();
+          towerInstance.setMatrixAt(twIdx++, dummy.matrix);
+        }
+
+        // Dome/cap at top
+        if (twIdx < 40) {
+          dummy.position.set(vx, ch + minaretH + 3, vz);
+          dummy.scale.set(3, 6, 3);
+          dummy.updateMatrix();
+          towerInstance.setMatrixAt(twIdx++, dummy.matrix);
+        }
+      }
+
+      // === Secondary watchtower at village edge ===
+      if (twIdx < 40) {
+        const twAngle = this.seededRandom(seed0 + 20) * Math.PI * 2;
+        const twX = vx + Math.cos(twAngle) * villageRadius * 0.8;
+        const twZ = vz + Math.sin(twAngle) * villageRadius * 0.8;
+        const twH = this.getHeightAt(twX, twZ);
+        const guardH = 30 + this.seededRandom(seed0 + 21) * 15;
+
+        dummy.position.set(twX, twH + guardH / 2, twZ);
+        dummy.scale.set(5, guardH, 5);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        towerInstance.setMatrixAt(twIdx++, dummy.matrix);
+
+        // Platform
+        if (twIdx < 40) {
+          dummy.position.set(twX, twH + guardH, twZ);
+          dummy.scale.set(8, 2, 8);
+          dummy.updateMatrix();
+          towerInstance.setMatrixAt(twIdx++, dummy.matrix);
+        }
+      }
+
+      // === Compound walls (enclosures around village edges) ===
+      const wallCount = 5 + Math.floor(this.seededRandom(seed0 + 30) * 4);
+      for (let w = 0; w < wallCount && dIdx < 300; w++) {
+        const seed = (w + vi * 100 + 71000) * 43.71;
+        const wAngle = (w / wallCount) * Math.PI * 2 + this.seededRandom(seed) * 0.5;
+        const wDist = villageRadius * (0.5 + this.seededRandom(seed + 1) * 0.5);
+        const wx = vx + Math.cos(wAngle) * wDist;
+        const wz = vz + Math.sin(wAngle) * wDist;
+        const wh = this.getHeightAt(wx, wz);
+        const wallLen = 40 + this.seededRandom(seed + 2) * 60;
+        const wallHt = 4 + this.seededRandom(seed + 5) * 4;
+
+        dummy.position.set(wx, wh + wallHt / 2, wz);
+        dummy.scale.set(2, wallHt, wallLen);
+        dummy.rotation.set(0, wAngle + Math.PI / 2, 0);
+        dummy.updateMatrix();
+        darkInstance.setMatrixAt(dIdx++, dummy.matrix);
+      }
+
+      // === Central market / plaza ===
+      if (dIdx < 300) {
+        const ch = this.getHeightAt(vx + 30, vz + 30);
+        // Large canopy
+        dummy.position.set(vx + 30, ch + 6, vz + 30);
+        dummy.scale.set(25, 0.8, 25);
+        dummy.rotation.set(0, 0.3, 0);
         dummy.updateMatrix();
         darkInstance.setMatrixAt(dIdx++, dummy.matrix);
 
-        for (const corner of [[-6, -6], [6, -6], [6, 6], [-6, 6]]) {
-          if (dIdx >= 100) break;
-          dummy.position.set(vx + corner[0], ch + 2, vz + corner[1]);
-          dummy.scale.set(0.5, 4, 0.5);
+        // Support pillars
+        for (const corner of [[-10, -10], [10, -10], [10, 10], [-10, 10]]) {
+          if (dIdx >= 300) break;
+          dummy.position.set(vx + 30 + corner[0], ch + 3, vz + 30 + corner[1]);
+          dummy.scale.set(1, 6, 1);
           dummy.updateMatrix();
           darkInstance.setMatrixAt(dIdx++, dummy.matrix);
         }
       }
-
-      // Compound walls
-      for (let w = 0; w < 3 && dIdx < 100; w++) {
-        const seed = (w + vx * 100 + 71000) * 43.71;
-        const wx = vx + (this.seededRandom(seed) - 0.5) * 200;
-        const wz = vz + (this.seededRandom(seed + 1) - 0.5) * 200;
-        const wh = this.getHeightAt(wx, wz);
-        const wallLen = 30 + this.seededRandom(seed + 2) * 40;
-        const wallAngle = this.seededRandom(seed + 3) * Math.PI;
-
-        dummy.position.set(wx, wh + 2, wz);
-        dummy.scale.set(1.5, 4, wallLen);
-        dummy.rotation.set(0, wallAngle, 0);
-        dummy.updateMatrix();
-        darkInstance.setMatrixAt(dIdx++, dummy.matrix);
-      }
     }
 
     wallInstance.count = wIdx;
-    roofInstance.count = rIdx;
+    wall2Instance.count = w2Idx;
+    roofInstance.count = Math.min(rIdx, 800);
     darkInstance.count = dIdx;
-    wallInstance.instanceMatrix.needsUpdate = true;
-    roofInstance.instanceMatrix.needsUpdate = true;
-    darkInstance.instanceMatrix.needsUpdate = true;
-    this.scene.add(wallInstance);
-    this.scene.add(roofInstance);
-    this.scene.add(darkInstance);
+    towerInstance.count = twIdx;
+    for (const inst of [wallInstance, wall2Instance, roofInstance, darkInstance, towerInstance]) {
+      inst.instanceMatrix.needsUpdate = true;
+      this.scene.add(inst);
+    }
   }
 
   addMilitaryBase() {
@@ -1689,108 +1852,270 @@ export class Terrain {
     const metalMat = new THREE.MeshLambertMaterial({ color: 0x666666 });
     const glassMat = new THREE.MeshLambertMaterial({ color: 0x5588aa });
     const greenMat = new THREE.MeshLambertMaterial({ color: 0x556b2f });
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
+    const fenceMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
 
-    // Main runway — 2800m long, 50m wide
-    const runwayGeom = new THREE.BoxGeometry(2800, 1, 50);
+    // === RUNWAY === 2800m long, 60m wide
+    const runwayGeom = new THREE.BoxGeometry(2800, 1, 60);
     const runway = new THREE.Mesh(runwayGeom, tarmacMat);
     runway.position.set(ax, baseH + 0.5, az);
-    runway.castShadow = true;
     this.scene.add(runway);
 
-    // Runway center line
-    const lineGeom = new THREE.BoxGeometry(2800, 1.1, 2);
-    const centerLine = new THREE.Mesh(lineGeom, markingMat);
-    centerLine.position.set(ax, baseH + 0.6, az);
-    this.scene.add(centerLine);
+    // Center line dashes
+    for (let d = -1350; d < 1350; d += 80) {
+      const dashGeom = new THREE.BoxGeometry(40, 1.1, 2);
+      const dash = new THREE.Mesh(dashGeom, markingMat);
+      dash.position.set(ax + d, baseH + 0.6, az);
+      this.scene.add(dash);
+    }
 
     // Runway threshold markings
     for (const endX of [ax - 1350, ax + 1350]) {
-      for (let s = -3; s <= 3; s++) {
-        const stripeGeom = new THREE.BoxGeometry(30, 1.1, 3);
+      for (let s = -4; s <= 4; s++) {
+        const stripeGeom = new THREE.BoxGeometry(40, 1.1, 3);
         const stripe = new THREE.Mesh(stripeGeom, markingMat);
         stripe.position.set(endX, baseH + 0.6, az + s * 6);
         this.scene.add(stripe);
       }
+      // Runway numbers
+      const numGeom = new THREE.BoxGeometry(15, 1.1, 20);
+      const num = new THREE.Mesh(numGeom, markingMat);
+      num.position.set(endX + (endX < ax ? 60 : -60), baseH + 0.6, az);
+      this.scene.add(num);
     }
 
-    // Taxiway
-    const taxiwayGeom = new THREE.BoxGeometry(600, 1, 30);
-    const taxiway = new THREE.Mesh(taxiwayGeom, tarmacMat);
-    taxiway.position.set(ax + 200, baseH + 0.5, az - 80);
-    this.scene.add(taxiway);
+    // Edge lines
+    for (const side of [-28, 28]) {
+      const edgeGeom = new THREE.BoxGeometry(2800, 1.1, 1.5);
+      const edge = new THREE.Mesh(edgeGeom, markingMat);
+      edge.position.set(ax, baseH + 0.6, az + side);
+      this.scene.add(edge);
+    }
 
-    // Apron (parking area)
-    const apronGeom = new THREE.BoxGeometry(400, 1, 200);
+    // === TAXIWAYS ===
+    const taxiways = [
+      { x: ax + 200, z: az - 100, w: 700, d: 35 },
+      { x: ax - 400, z: az - 100, w: 35, d: 150 },
+      { x: ax + 600, z: az - 100, w: 35, d: 150 },
+    ];
+    for (const tw of taxiways) {
+      const tGeom = new THREE.BoxGeometry(tw.w, 1, tw.d);
+      const t = new THREE.Mesh(tGeom, tarmacMat);
+      t.position.set(tw.x, baseH + 0.5, tw.z);
+      this.scene.add(t);
+    }
+
+    // === LARGE APRON (parking area) ===
+    const apronGeom = new THREE.BoxGeometry(800, 1, 350);
     const apron = new THREE.Mesh(apronGeom, tarmacMat);
-    apron.position.set(ax + 200, baseH + 0.5, az - 200);
+    apron.position.set(ax + 100, baseH + 0.5, az - 300);
     this.scene.add(apron);
 
-    // Hangars
-    for (let h = 0; h < 4; h++) {
-      const hx = ax - 200 + h * 150;
-      const hz = az - 350;
-      const hangarGeom = new THREE.BoxGeometry(60, 20, 40);
+    // === HANGARS (6 large) ===
+    for (let h = 0; h < 6; h++) {
+      const hx = ax - 300 + h * 130;
+      const hz = az - 520;
+      const hangarGeom = new THREE.BoxGeometry(70, 25, 50);
       const hangar = new THREE.Mesh(hangarGeom, metalMat);
-      hangar.position.set(hx, baseH + 10, hz);
+      hangar.position.set(hx, baseH + 12.5, hz);
       hangar.castShadow = true;
       this.scene.add(hangar);
 
-      const doorGeom = new THREE.BoxGeometry(50, 16, 1);
-      const door = new THREE.Mesh(doorGeom, new THREE.MeshLambertMaterial({ color: 0x444444 }));
-      door.position.set(hx, baseH + 8, hz + 20.5);
+      // Arched roof
+      const roofGeom = new THREE.BoxGeometry(72, 4, 52);
+      const roof = new THREE.Mesh(roofGeom, darkMat);
+      roof.position.set(hx, baseH + 26, hz);
+      this.scene.add(roof);
+
+      // Front door
+      const doorGeom = new THREE.BoxGeometry(55, 20, 1);
+      const door = new THREE.Mesh(doorGeom, darkMat);
+      door.position.set(hx, baseH + 10, hz + 25.5);
       this.scene.add(door);
+
+      // Hangar collider
+      this.buildingColliders.push({
+        x: hx, z: hz,
+        radius: 42,
+        bottom: baseH,
+        top: baseH + 28,
+      });
     }
 
-    // Control tower
-    const towerH = 45;
-    const towerGeom = new THREE.BoxGeometry(12, towerH, 12);
+    // === CONTROL TOWER ===
+    const towerH = 55;
+    const towerGeom = new THREE.BoxGeometry(14, towerH, 14);
     const tower = new THREE.Mesh(towerGeom, concreteMat);
-    tower.position.set(ax + 500, baseH + towerH / 2, az - 300);
+    tower.position.set(ax + 600, baseH + towerH / 2, az - 400);
     tower.castShadow = true;
     this.scene.add(tower);
 
-    const cabGeom = new THREE.BoxGeometry(16, 8, 16);
+    const cabGeom = new THREE.BoxGeometry(20, 10, 20);
     const cab = new THREE.Mesh(cabGeom, glassMat);
-    cab.position.set(ax + 500, baseH + towerH + 4, az - 300);
+    cab.position.set(ax + 600, baseH + towerH + 5, az - 400);
     this.scene.add(cab);
 
-    const radarGeom = new THREE.SphereGeometry(4, 8, 8);
+    // Tower collider
+    this.buildingColliders.push({
+      x: ax + 600, z: az - 400,
+      radius: 12,
+      bottom: baseH,
+      top: baseH + towerH + 16,
+    });
+
+    // Roof overhang
+    const overhangGeom = new THREE.BoxGeometry(24, 1.5, 24);
+    const overhang = new THREE.Mesh(overhangGeom, concreteMat);
+    overhang.position.set(ax + 600, baseH + towerH + 10.5, az - 400);
+    this.scene.add(overhang);
+
+    // Radar on tower
+    const radarGeom = new THREE.SphereGeometry(5, 10, 8);
     const radar = new THREE.Mesh(radarGeom, new THREE.MeshLambertMaterial({ color: 0xaaaaaa }));
-    radar.position.set(ax + 500, baseH + towerH + 12, az - 300);
+    radar.position.set(ax + 600, baseH + towerH + 16, az - 400);
     this.scene.add(radar);
 
-    // Fuel depot
-    const fuelGeom = new THREE.CylinderGeometry(6, 6, 12, 10);
-    for (let f = 0; f < 4; f++) {
+    // === BARRACKS (4 long buildings) ===
+    for (let b = 0; b < 4; b++) {
+      const bx = ax - 600 + b * 70;
+      const bz = az - 350;
+      const barracksGeom = new THREE.BoxGeometry(50, 10, 80);
+      const barracks = new THREE.Mesh(barracksGeom, concreteMat);
+      barracks.position.set(bx, baseH + 5, bz);
+      barracks.castShadow = true;
+      this.scene.add(barracks);
+
+      // Flat roof detail
+      const roofGeom = new THREE.BoxGeometry(52, 1, 82);
+      const roof = new THREE.Mesh(roofGeom, darkMat);
+      roof.position.set(bx, baseH + 10.5, bz);
+      this.scene.add(roof);
+
+      // Barracks collider
+      this.buildingColliders.push({
+        x: bx, z: bz,
+        radius: 47,
+        bottom: baseH,
+        top: baseH + 12,
+      });
+    }
+
+    // === SAM SITE ===
+    const samX = ax - 800, samZ = az + 200;
+    // Radar dish
+    const samRadarGeom = new THREE.CylinderGeometry(0.5, 0.5, 20, 6);
+    const samMast = new THREE.Mesh(samRadarGeom, fenceMat);
+    samMast.position.set(samX, baseH + 10, samZ);
+    this.scene.add(samMast);
+
+    const samDishGeom = new THREE.BoxGeometry(12, 8, 2);
+    const samDish = new THREE.Mesh(samDishGeom, fenceMat);
+    samDish.position.set(samX, baseH + 22, samZ);
+    this.scene.add(samDish);
+
+    // Launcher rails
+    for (let l = 0; l < 4; l++) {
+      const lAngle = (l / 4) * Math.PI * 2;
+      const lx = samX + Math.cos(lAngle) * 25;
+      const lz = samZ + Math.sin(lAngle) * 25;
+      const launcherGeom = new THREE.BoxGeometry(3, 3, 10);
+      const launcher = new THREE.Mesh(launcherGeom, greenMat);
+      launcher.position.set(lx, baseH + 3, lz);
+      launcher.rotation.set(-0.5, lAngle, 0);
+      launcher.castShadow = true;
+      this.scene.add(launcher);
+    }
+
+    // === FUEL DEPOT (6 large tanks) ===
+    const fuelGeom = new THREE.CylinderGeometry(10, 10, 18, 12);
+    for (let f = 0; f < 6; f++) {
+      const fx = ax - 700 + (f % 3) * 40;
+      const fz = az - 150 + Math.floor(f / 3) * 40;
       const fuel = new THREE.Mesh(fuelGeom, new THREE.MeshLambertMaterial({ color: 0x888888 }));
-      fuel.position.set(ax - 500 + f * 30, baseH + 6, az - 280);
+      fuel.position.set(fx, baseH + 9, fz);
       fuel.castShadow = true;
       this.scene.add(fuel);
     }
 
-    // Military crates
-    for (let v = 0; v < 8; v++) {
-      const seed = (v + 95000) * 31.17;
-      const vx = ax + (this.seededRandom(seed) - 0.5) * 800;
-      const vz = az - 150 - this.seededRandom(seed + 1) * 200;
-      const crateGeom = new THREE.BoxGeometry(
-        4 + this.seededRandom(seed + 2) * 6,
-        3 + this.seededRandom(seed + 3) * 4,
-        4 + this.seededRandom(seed + 4) * 6
-      );
-      const crate = new THREE.Mesh(crateGeom, greenMat);
-      crate.position.set(vx, baseH + 2, vz);
-      this.scene.add(crate);
+    // === PERIMETER WALL / FENCE ===
+    const perimeterPoints = [
+      { x: ax - 900, z: az + 100 },
+      { x: ax + 800, z: az + 100 },
+      { x: ax + 800, z: az - 600 },
+      { x: ax - 900, z: az - 600 },
+    ];
+    for (let p = 0; p < perimeterPoints.length; p++) {
+      const p1 = perimeterPoints[p];
+      const p2 = perimeterPoints[(p + 1) % perimeterPoints.length];
+      const dx = p2.x - p1.x, dz = p2.z - p1.z;
+      const len = Math.sqrt(dx * dx + dz * dz);
+      const angle = Math.atan2(dx, dz);
+      const mx = (p1.x + p2.x) / 2, mz = (p1.z + p2.z) / 2;
+
+      const wallGeom = new THREE.BoxGeometry(1.5, 6, len);
+      const wall = new THREE.Mesh(wallGeom, fenceMat);
+      wall.position.set(mx, baseH + 3, mz);
+      wall.rotation.y = angle;
+      this.scene.add(wall);
     }
 
-    // Plane prop spawn positions on the apron
+    // === GUARD TOWERS at corners ===
+    for (const corner of perimeterPoints) {
+      const gtGeom = new THREE.BoxGeometry(5, 18, 5);
+      const gt = new THREE.Mesh(gtGeom, concreteMat);
+      gt.position.set(corner.x, baseH + 9, corner.z);
+      gt.castShadow = true;
+      this.scene.add(gt);
+
+      // Platform
+      const platGeom = new THREE.BoxGeometry(8, 1.5, 8);
+      const plat = new THREE.Mesh(platGeom, concreteMat);
+      plat.position.set(corner.x, baseH + 18.5, corner.z);
+      this.scene.add(plat);
+    }
+
+    // === MILITARY VEHICLES (boxes on the apron) ===
+    for (let v = 0; v < 15; v++) {
+      const seed = (v + 95000) * 31.17;
+      const vx = ax - 200 + this.seededRandom(seed) * 600;
+      const vz = az - 200 - this.seededRandom(seed + 1) * 250;
+      // Truck shape
+      const truckGeom = new THREE.BoxGeometry(
+        4 + this.seededRandom(seed + 2) * 4,
+        3 + this.seededRandom(seed + 3) * 3,
+        8 + this.seededRandom(seed + 4) * 6
+      );
+      const truck = new THREE.Mesh(truckGeom, greenMat);
+      truck.position.set(vx, baseH + 2, vz);
+      truck.rotation.y = this.seededRandom(seed + 5) * Math.PI;
+      this.scene.add(truck);
+    }
+
+    // === CRATE STACKS ===
+    for (let c = 0; c < 10; c++) {
+      const seed = (c + 96000) * 47.13;
+      const cx = ax - 400 + this.seededRandom(seed) * 800;
+      const cz = az - 250 - this.seededRandom(seed + 1) * 300;
+      for (let s = 0; s < 2 + Math.floor(this.seededRandom(seed + 2) * 3); s++) {
+        const crateGeom = new THREE.BoxGeometry(6, 5, 6);
+        const crate = new THREE.Mesh(crateGeom, greenMat);
+        crate.position.set(cx + (this.seededRandom(seed + 3 + s) - 0.5) * 4, baseH + 2.5 + s * 5, cz);
+        this.scene.add(crate);
+      }
+    }
+
+    // === PLANE PROP POSITIONS (10 planes scattered on apron + runway edges) ===
     const propSpots = [
-      { x: ax + 100, z: az - 180, heading: Math.PI * 0.5 },
-      { x: ax + 250, z: az - 180, heading: Math.PI * 0.5 },
-      { x: ax + 350, z: az - 220, heading: Math.PI * 0.3 },
-      { x: ax - 50, z: az - 150, heading: -Math.PI * 0.5 },
-      { x: ax + 150, z: az - 250, heading: Math.PI * 0.7 },
+      { x: ax + 100, z: az - 200, heading: Math.PI * 0.5 },
+      { x: ax + 250, z: az - 200, heading: Math.PI * 0.5 },
+      { x: ax + 400, z: az - 250, heading: Math.PI * 0.3 },
+      { x: ax - 50, z: az - 180, heading: -Math.PI * 0.5 },
+      { x: ax + 150, z: az - 320, heading: Math.PI * 0.7 },
       { x: ax - 200, z: az + 30, heading: 0 },
+      { x: ax + 550, z: az - 200, heading: Math.PI * 0.4 },
+      { x: ax - 100, z: az - 280, heading: Math.PI },
+      { x: ax + 300, z: az - 380, heading: -Math.PI * 0.3 },
+      { x: ax - 300, z: az + 25, heading: Math.PI * 0.1 },
     ];
 
     for (const spot of propSpots) {
@@ -1800,6 +2125,495 @@ export class Terrain {
         z: spot.z,
         heading: spot.heading,
       });
+    }
+  }
+
+  addDesertFeatures() {
+    const { SIZE, MAX_HEIGHT, WATER_LEVEL } = TERRAIN;
+
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x8b5a2b });
+    const rockMat2 = new THREE.MeshLambertMaterial({ color: 0x7a4a22 });
+    const steelMat = new THREE.MeshLambertMaterial({ color: 0x999999 });
+    const rustMat = new THREE.MeshLambertMaterial({ color: 0x885533 });
+    const ruinMat = new THREE.MeshLambertMaterial({ color: 0xb8a882 });
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
+    const roadMat = new THREE.MeshLambertMaterial({
+      color: 0x3a3530,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    const boxGeom = new THREE.BoxGeometry(1, 1, 1);
+    const cylGeom = new THREE.CylinderGeometry(1, 1, 1, 6);
+
+    // Helpers to check if position is in an exclusion zone
+    const isExcluded = (x, z) => {
+      const cd = Math.sqrt((x - this._cityX) ** 2 + (z - this._cityZ) ** 2);
+      if (cd < 2000) return true;
+      const nd = Math.sqrt((x - this._navalX) ** 2 + (z - this._navalZ) ** 2);
+      if (nd < 800) return true;
+      if (Math.abs(x - this._airbaseX) < 1900 && Math.abs(z - (this._airbaseZ - 200)) < 800) return true;
+      const od = Math.sqrt((x - this._oasisX) ** 2 + (z - this._oasisZ) ** 2);
+      if (od < 500) return true;
+      if (z > 2200) return true; // ocean
+      return false;
+    };
+
+    // === ROCK SPIRES / MONOLITHS ===
+    // Tall dramatic rocks scattered across the desert
+    const rockInstance = new THREE.InstancedMesh(boxGeom, rockMat, 200);
+    const rock2Instance = new THREE.InstancedMesh(boxGeom, rockMat2, 200);
+    rockInstance.castShadow = true;
+    rock2Instance.castShadow = true;
+
+    const dummy = new THREE.Object3D();
+    let rIdx = 0, r2Idx = 0;
+
+    for (let i = 0; i < 120; i++) {
+      const seed = (i + 60000) * 73.91;
+      const x = (this.seededRandom(seed) - 0.5) * SIZE * 0.8;
+      const z = (this.seededRandom(seed + 1) - 0.5) * SIZE * 0.8;
+      if (isExcluded(x, z)) continue;
+
+      const h = this.getHeightAt(x, z);
+      const nh = h / MAX_HEIGHT;
+      if (h < WATER_LEVEL + 5 || nh < 0.04) continue;
+
+      // Tall spire
+      const spireH = 25 + this.seededRandom(seed + 2) * 80;
+      const spireW = 6 + this.seededRandom(seed + 3) * 15;
+      const spireD = 6 + this.seededRandom(seed + 4) * 12;
+
+      if (rIdx < 200) {
+        dummy.position.set(x, h + spireH / 2, z);
+        dummy.scale.set(spireW, spireH, spireD);
+        dummy.rotation.set(
+          (this.seededRandom(seed + 5) - 0.5) * 0.15,
+          this.seededRandom(seed + 6) * Math.PI,
+          (this.seededRandom(seed + 7) - 0.5) * 0.1
+        );
+        dummy.updateMatrix();
+        rockInstance.setMatrixAt(rIdx++, dummy.matrix);
+      }
+
+      // Smaller rocks at base
+      for (let r = 0; r < 3 && r2Idx < 200; r++) {
+        const rs = (r + 1) * 11.37 + seed;
+        const rx = x + (this.seededRandom(rs) - 0.5) * spireW * 2;
+        const rz = z + (this.seededRandom(rs + 1) - 0.5) * spireD * 2;
+        const rh = this.getHeightAt(rx, rz);
+        const boulderH = 5 + this.seededRandom(rs + 2) * 15;
+
+        dummy.position.set(rx, rh + boulderH / 2, rz);
+        dummy.scale.set(
+          5 + this.seededRandom(rs + 3) * 10,
+          boulderH,
+          5 + this.seededRandom(rs + 4) * 10
+        );
+        dummy.rotation.set(0, this.seededRandom(rs + 5) * Math.PI, 0);
+        dummy.updateMatrix();
+        rock2Instance.setMatrixAt(r2Idx++, dummy.matrix);
+      }
+    }
+
+    rockInstance.count = rIdx;
+    rock2Instance.count = r2Idx;
+    rockInstance.instanceMatrix.needsUpdate = true;
+    rock2Instance.instanceMatrix.needsUpdate = true;
+    this.scene.add(rockInstance);
+    this.scene.add(rock2Instance);
+
+    // === COMMUNICATION TOWERS ===
+    for (let i = 0; i < 18; i++) {
+      const seed = (i + 61000) * 53.17;
+      const x = (this.seededRandom(seed) - 0.5) * SIZE * 0.75;
+      const z = (this.seededRandom(seed + 1) - 0.5) * SIZE * 0.75;
+      if (isExcluded(x, z)) continue;
+
+      const h = this.getHeightAt(x, z);
+      if (h < WATER_LEVEL + 5) continue;
+
+      const towerH = 50 + this.seededRandom(seed + 2) * 50;
+
+      // Lattice tower (tapered cylinder)
+      const towerGeom = new THREE.CylinderGeometry(1, 3, towerH, 4);
+      const tower = new THREE.Mesh(towerGeom, steelMat);
+      tower.position.set(x, h + towerH / 2, z);
+      tower.castShadow = true;
+      this.scene.add(tower);
+
+      // Cross-beams at intervals
+      for (let b = 0; b < 4; b++) {
+        const by = h + towerH * 0.2 + (b / 4) * towerH * 0.7;
+        const beamW = 3 - b * 0.5;
+        const beamGeom = new THREE.BoxGeometry(beamW * 2, 0.5, beamW * 2);
+        const beam = new THREE.Mesh(beamGeom, steelMat);
+        beam.position.set(x, by, z);
+        beam.rotation.y = b * Math.PI / 4;
+        this.scene.add(beam);
+      }
+
+      // Antenna at top
+      const antennaGeom = new THREE.CylinderGeometry(0.2, 0.2, 15, 4);
+      const antenna = new THREE.Mesh(antennaGeom, steelMat);
+      antenna.position.set(x, h + towerH + 7.5, z);
+      this.scene.add(antenna);
+
+      // Red warning light
+      const lightGeom = new THREE.SphereGeometry(0.8, 6, 6);
+      const light = new THREE.Mesh(lightGeom, new THREE.MeshLambertMaterial({ color: 0xff2222, emissive: 0x551111 }));
+      light.position.set(x, h + towerH + 16, z);
+      this.scene.add(light);
+
+      // Equipment shed at base
+      const shedGeom = new THREE.BoxGeometry(6, 4, 8);
+      const shed = new THREE.Mesh(shedGeom, steelMat);
+      shed.position.set(x + 5, h + 2, z);
+      this.scene.add(shed);
+    }
+
+    // === OIL DERRICKS / PUMP JACKS ===
+    for (let i = 0; i < 12; i++) {
+      const seed = (i + 62000) * 41.31;
+      const x = (this.seededRandom(seed) - 0.5) * SIZE * 0.7;
+      const z = (this.seededRandom(seed + 1) - 0.5) * SIZE * 0.7;
+      if (isExcluded(x, z)) continue;
+
+      const h = this.getHeightAt(x, z);
+      const nh = h / MAX_HEIGHT;
+      if (h < WATER_LEVEL + 5 || nh > 0.4) continue;
+
+      // Derrick frame (tall pyramid-ish)
+      const derrickH = 35 + this.seededRandom(seed + 2) * 20;
+      const derrickGeom = new THREE.CylinderGeometry(1.5, 5, derrickH, 4);
+      const derrick = new THREE.Mesh(derrickGeom, rustMat);
+      derrick.position.set(x, h + derrickH / 2, z);
+      derrick.castShadow = true;
+      this.scene.add(derrick);
+
+      // Pump head (beam)
+      const pumpGeom = new THREE.BoxGeometry(15, 2, 3);
+      const pump = new THREE.Mesh(pumpGeom, darkMat);
+      pump.position.set(x + 8, h + 8, z);
+      pump.rotation.z = -0.2;
+      this.scene.add(pump);
+
+      // Support A-frame
+      const aFrameGeom = new THREE.BoxGeometry(2, 10, 2);
+      const aFrame = new THREE.Mesh(aFrameGeom, rustMat);
+      aFrame.position.set(x + 2, h + 5, z);
+      this.scene.add(aFrame);
+
+      // Oil tank nearby
+      const tankGeom = new THREE.CylinderGeometry(5, 5, 8, 10);
+      const tank = new THREE.Mesh(tankGeom, darkMat);
+      tank.position.set(x - 12, h + 4, z + 8);
+      tank.castShadow = true;
+      this.scene.add(tank);
+
+      // Pipe from derrick to tank
+      const pipeGeom = new THREE.CylinderGeometry(0.4, 0.4, 15, 6);
+      const pipe = new THREE.Mesh(pipeGeom, rustMat);
+      pipe.position.set(x - 6, h + 2, z + 4);
+      pipe.rotation.z = Math.PI / 2;
+      this.scene.add(pipe);
+    }
+
+    // === ANCIENT RUINS ===
+    const ruinInstance = new THREE.InstancedMesh(cylGeom, ruinMat, 150);
+    const ruinBoxInstance = new THREE.InstancedMesh(boxGeom, ruinMat, 100);
+    ruinInstance.castShadow = true;
+    let ruIdx = 0, rubIdx = 0;
+
+    const ruinSites = [
+      { x: -500, z: -3000 },
+      { x: 1500, z: -3500 },
+      { x: -2500, z: -3500 },
+      { x: 3000, z: -1000 },
+      { x: -3500, z: -500 },
+      { x: 500, z: -5000 },
+      { x: -1800, z: -3000 },
+      { x: 2000, z: -4000 },
+    ];
+
+    for (const site of ruinSites) {
+      const sh = this.getHeightAt(site.x, site.z);
+      if (sh < WATER_LEVEL + 3) continue;
+      if (isExcluded(site.x, site.z)) continue;
+
+      const seed = (site.x * 7 + site.z * 13 + 63000);
+
+      // Columns in a rough circle
+      const colCount = 6 + Math.floor(this.seededRandom(seed) * 8);
+      const radius = 20 + this.seededRandom(seed + 1) * 30;
+
+      for (let c = 0; c < colCount && ruIdx < 150; c++) {
+        const cAngle = (c / colCount) * Math.PI * 2 + this.seededRandom(seed + c + 10) * 0.3;
+        const cx = site.x + Math.cos(cAngle) * radius;
+        const cz = site.z + Math.sin(cAngle) * radius;
+        const ch = this.getHeightAt(cx, cz);
+
+        // Some columns broken (shorter)
+        const broken = this.seededRandom(seed + c + 20) > 0.5;
+        const colH = broken ? 5 + this.seededRandom(seed + c + 21) * 12 : 15 + this.seededRandom(seed + c + 22) * 15;
+
+        dummy.position.set(cx, ch + colH / 2, cz);
+        dummy.scale.set(2, colH, 2);
+        dummy.rotation.set(
+          broken ? (this.seededRandom(seed + c + 23) - 0.5) * 0.3 : 0,
+          0,
+          broken ? (this.seededRandom(seed + c + 24) - 0.5) * 0.2 : 0
+        );
+        dummy.updateMatrix();
+        ruinInstance.setMatrixAt(ruIdx++, dummy.matrix);
+      }
+
+      // Fallen stone blocks
+      for (let b = 0; b < 5 && rubIdx < 100; b++) {
+        const bs = seed + b * 7 + 50;
+        const bx = site.x + (this.seededRandom(bs) - 0.5) * radius * 2;
+        const bz = site.z + (this.seededRandom(bs + 1) - 0.5) * radius * 2;
+        const bh = this.getHeightAt(bx, bz);
+        dummy.position.set(bx, bh + 1.5, bz);
+        dummy.scale.set(
+          3 + this.seededRandom(bs + 2) * 8,
+          2 + this.seededRandom(bs + 3) * 3,
+          3 + this.seededRandom(bs + 4) * 8
+        );
+        dummy.rotation.set(0, this.seededRandom(bs + 5) * Math.PI, 0);
+        dummy.updateMatrix();
+        ruinBoxInstance.setMatrixAt(rubIdx++, dummy.matrix);
+      }
+
+      // Central altar / foundation
+      if (rubIdx < 100) {
+        dummy.position.set(site.x, sh + 1.5, site.z);
+        dummy.scale.set(radius * 0.8, 3, radius * 0.8);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        ruinBoxInstance.setMatrixAt(rubIdx++, dummy.matrix);
+      }
+    }
+
+    ruinInstance.count = ruIdx;
+    ruinBoxInstance.count = rubIdx;
+    ruinInstance.instanceMatrix.needsUpdate = true;
+    ruinBoxInstance.instanceMatrix.needsUpdate = true;
+    this.scene.add(ruinInstance);
+    this.scene.add(ruinBoxInstance);
+
+    // === DESERT OUTPOSTS (small fortified compounds) ===
+    const outposts = [
+      { x: 0, z: -1500 },
+      { x: -2000, z: -3000 },
+      { x: 1500, z: -1800 },
+      { x: -500, z: -2800 },
+      { x: 3000, z: -2500 },
+      { x: -3500, z: -1000 },
+    ];
+
+    const outpostWallMat = new THREE.MeshLambertMaterial({ color: 0xc0a878 });
+    const outpostDarkMat = new THREE.MeshLambertMaterial({ color: 0x888070 });
+
+    for (const op of outposts) {
+      const oh = this.getHeightAt(op.x, op.z);
+      if (oh < WATER_LEVEL + 3 || isExcluded(op.x, op.z)) continue;
+
+      // Perimeter wall (square compound, ~80m across)
+      const wallH = 6;
+      const wallSize = 40;
+      for (const [dx, dz, w, d] of [
+        [0, -wallSize, wallSize * 2, 2],
+        [0, wallSize, wallSize * 2, 2],
+        [-wallSize, 0, 2, wallSize * 2],
+        [wallSize, 0, 2, wallSize * 2],
+      ]) {
+        const wg = new THREE.BoxGeometry(w, wallH, d);
+        const wm = new THREE.Mesh(wg, outpostWallMat);
+        wm.position.set(op.x + dx, oh + wallH / 2, op.z + dz);
+        wm.castShadow = true;
+        this.scene.add(wm);
+      }
+
+      // 2-3 buildings inside
+      for (let b = 0; b < 3; b++) {
+        const bSeed = (op.x * 3 + op.z * 7 + b * 111);
+        const bw = 12 + this.seededRandom(bSeed) * 10;
+        const bh = 6 + this.seededRandom(bSeed + 1) * 8;
+        const bd = 12 + this.seededRandom(bSeed + 2) * 10;
+        const bx = op.x + (this.seededRandom(bSeed + 3) - 0.5) * 50;
+        const bz = op.z + (this.seededRandom(bSeed + 4) - 0.5) * 50;
+
+        const bg = new THREE.BoxGeometry(bw, bh, bd);
+        const bm = new THREE.Mesh(bg, outpostWallMat);
+        bm.position.set(bx, oh + bh / 2, bz);
+        bm.castShadow = true;
+        this.scene.add(bm);
+      }
+
+      // Guard tower at one corner
+      const gtGeom = new THREE.BoxGeometry(4, 15, 4);
+      const gt = new THREE.Mesh(gtGeom, outpostDarkMat);
+      gt.position.set(op.x + wallSize, oh + 7.5, op.z + wallSize);
+      gt.castShadow = true;
+      this.scene.add(gt);
+
+      const platGeom = new THREE.BoxGeometry(7, 1, 7);
+      const plat = new THREE.Mesh(platGeom, outpostDarkMat);
+      plat.position.set(op.x + wallSize, oh + 15.5, op.z + wallSize);
+      this.scene.add(plat);
+    }
+
+    // === DESERT ROADS connecting major locations ===
+    const roadRoutes = [
+      // Oasis to nearest village
+      [{ x: this._oasisX, z: this._oasisZ }, { x: -1500, z: -700 }],
+      // Village chain
+      [{ x: -1500, z: -700 }, { x: -1000, z: -2200 }],
+      [{ x: -1000, z: -2200 }, { x: 800, z: -2500 }],
+      // Airbase road to nearby village
+      [{ x: this._airbaseX + 800, z: this._airbaseZ }, { x: -1000, z: -2200 }],
+      // Road toward city from central desert
+      [{ x: 800, z: -2500 }, { x: 2500, z: -1800 }],
+      // City approach road
+      [{ x: this._cityX - 800, z: this._cityZ - 800 }, { x: 500, z: -200 }],
+      [{ x: 500, z: -200 }, { x: -500, z: -700 }],
+      // Far north connection
+      [{ x: -1000, z: -2200 }, { x: -500, z: -4000 }],
+      // Eastern branch
+      [{ x: 2500, z: -1800 }, { x: 3000, z: -1000 }],
+      // Airbase to far north village
+      [{ x: this._airbaseX, z: this._airbaseZ - 300 }, { x: -500, z: -4000 }],
+    ];
+
+    const roadWidth = 14;
+    for (const route of roadRoutes) {
+      const p1 = route[0], p2 = route[1];
+      const rdx = p2.x - p1.x, rdz = p2.z - p1.z;
+      const length = Math.sqrt(rdx * rdx + rdz * rdz);
+      // Perpendicular direction for road width
+      const perpX = -rdz / length, perpZ = rdx / length;
+
+      const segCount = Math.max(8, Math.floor(length / 20));
+      const vertices = [];
+      const indices = [];
+      let validCount = 0;
+
+      for (let s = 0; s <= segCount; s++) {
+        const t = s / segCount;
+        const cx = p1.x + rdx * t;
+        const cz = p1.z + rdz * t;
+        const ch = this.getHeightAt(cx, cz);
+
+        if (ch < WATER_LEVEL + 1) {
+          // Mark as underwater — we'll handle gaps
+          vertices.push(cx + perpX * roadWidth * 0.5, ch + 1.5, cz + perpZ * roadWidth * 0.5);
+          vertices.push(cx - perpX * roadWidth * 0.5, ch + 1.5, cz - perpZ * roadWidth * 0.5);
+          validCount++;
+          continue;
+        }
+
+        const lx = cx + perpX * roadWidth * 0.5;
+        const lz = cz + perpZ * roadWidth * 0.5;
+        const rx = cx - perpX * roadWidth * 0.5;
+        const rz = cz - perpZ * roadWidth * 0.5;
+        const lh = this.getHeightAt(lx, lz);
+        const rh = this.getHeightAt(rx, rz);
+
+        vertices.push(lx, lh + 1.5, lz);
+        vertices.push(rx, rh + 1.5, rz);
+        validCount++;
+      }
+
+      // Build triangle strip indices
+      for (let s = 0; s < validCount - 1; s++) {
+        const i = s * 2;
+        indices.push(i, i + 1, i + 2);
+        indices.push(i + 1, i + 3, i + 2);
+      }
+
+      if (indices.length > 0) {
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geom.setIndex(indices);
+        geom.computeVertexNormals();
+        const roadMesh = new THREE.Mesh(geom, roadMat);
+        roadMesh.receiveShadow = true;
+        this.scene.add(roadMesh);
+      }
+    }
+
+    // === POWER LINE PYLONS along some roads ===
+    const pylonRoute = roadRoutes[3]; // airbase to village
+    if (pylonRoute) {
+      const p1 = pylonRoute[0], p2 = pylonRoute[1];
+      const dx = p2.x - p1.x, dz = p2.z - p1.z;
+      const length = Math.sqrt(dx * dx + dz * dz);
+      const pylonCount = Math.floor(length / 200);
+
+      for (let p = 0; p <= pylonCount; p++) {
+        const t = p / pylonCount;
+        const px = p1.x + dx * t + 30; // offset from road
+        const pz = p1.z + dz * t + 30;
+        const ph = this.getHeightAt(px, pz);
+        if (ph < WATER_LEVEL + 3) continue;
+
+        // Pylon
+        const pylonGeom = new THREE.CylinderGeometry(0.5, 1, 30, 4);
+        const pylon = new THREE.Mesh(pylonGeom, steelMat);
+        pylon.position.set(px, ph + 15, pz);
+        pylon.castShadow = true;
+        this.scene.add(pylon);
+
+        // Cross-arm
+        const armGeom = new THREE.BoxGeometry(18, 1, 1);
+        const arm = new THREE.Mesh(armGeom, steelMat);
+        arm.position.set(px, ph + 28, pz);
+        this.scene.add(arm);
+      }
+    }
+
+    // === WIND TURBINES on mesa tops ===
+    for (let i = 0; i < 8; i++) {
+      const seed = (i + 64000) * 67.31;
+      const x = (this.seededRandom(seed) - 0.5) * SIZE * 0.6;
+      const z = (this.seededRandom(seed + 1) - 0.5) * SIZE * 0.6;
+      if (isExcluded(x, z)) continue;
+
+      const h = this.getHeightAt(x, z);
+      const nh = h / MAX_HEIGHT;
+      if (nh < 0.5 || nh > 0.7) continue; // Only on mesa tops
+
+      const hubH = 60 + this.seededRandom(seed + 2) * 20;
+
+      // Tower
+      const towerGeom = new THREE.CylinderGeometry(1.5, 3, hubH, 8);
+      const tower = new THREE.Mesh(towerGeom, new THREE.MeshLambertMaterial({ color: 0xeeeeee }));
+      tower.position.set(x, h + hubH / 2, z);
+      tower.castShadow = true;
+      this.scene.add(tower);
+
+      // Hub
+      const hubGeom = new THREE.SphereGeometry(2.5, 8, 6);
+      const hub = new THREE.Mesh(hubGeom, new THREE.MeshLambertMaterial({ color: 0xdddddd }));
+      hub.position.set(x, h + hubH + 2, z);
+      this.scene.add(hub);
+
+      // Blades (3)
+      for (let b = 0; b < 3; b++) {
+        const bladeAngle = (b / 3) * Math.PI * 2 + this.seededRandom(seed + 3) * Math.PI;
+        const bladeLen = 25;
+        const bladeGeom = new THREE.BoxGeometry(2, bladeLen, 0.5);
+        const blade = new THREE.Mesh(bladeGeom, new THREE.MeshLambertMaterial({ color: 0xeeeeee }));
+        blade.position.set(
+          x + Math.sin(bladeAngle) * bladeLen / 2,
+          h + hubH + 2 + Math.cos(bladeAngle) * bladeLen / 2,
+          z + 3
+        );
+        blade.rotation.z = -bladeAngle;
+        this.scene.add(blade);
+      }
     }
   }
 

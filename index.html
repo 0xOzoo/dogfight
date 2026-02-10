@@ -167,7 +167,13 @@
 
     <div id="pause-screen" class="hidden">
       <h2>PAUSED</h2>
+      <div class="pause-volume">
+        <label for="volume-slider">VOLUME</label>
+        <input type="range" id="volume-slider" min="0" max="100" value="50">
+        <span id="volume-value">50%</span>
+      </div>
       <button id="resume-btn">RESUME</button>
+      <button id="return-lobby-btn">RETURN TO SELECTION</button>
     </div>
 
     <div id="gameover-screen" class="hidden">

@@ -88,6 +88,9 @@ class Game {
     this.staticProps = [];
 
 
+    // Game loop control
+    this.stopped = false;
+
     // Track previous health for damage flash
     this.prevPlayerHealth = this.player.health;
 
@@ -105,6 +108,9 @@ class Game {
     this.gameState.onStartCallback = () => this.onGameStart();
     this.gameState.onRestartCallback = () => this.onRestart();
     this.gameState.onSpawnWaveCallback = (wave, count) => this.spawnWave(wave, count);
+    this.gameState.onReturnToLobbyCallback = () => this.onReturnToLobby();
+    this.gameState.onVolumeChangeCallback = (vol) => this.audio.setVolume(vol);
+    this.gameState.onResumeCallback = () => this.audio.resume();
 
     // Player trail
     this.playerTrail = null;
@@ -123,6 +129,32 @@ class Game {
 
   onRestart() {
     this.resetGame();
+  }
+
+  onReturnToLobby() {
+    // Stop audio
+    this.audio.suspend();
+
+    // Stop the game loop
+    this.stopped = true;
+
+    // Clean up scene
+    while (this.sceneManager.scene.children.length > 0) {
+      this.sceneManager.scene.remove(this.sceneManager.scene.children[0]);
+    }
+
+    // Dispose renderer
+    this.sceneManager.renderer.dispose();
+
+    // Re-init lobby preview
+    const previewCanvas = document.getElementById('plane-preview-canvas');
+    lobbyPreview = new LobbyPreview(previewCanvas);
+    lobbyPreview.start();
+    if (loadedModels[selectedPlaneIndex]) {
+      lobbyPreview.setModel(loadedModels[selectedPlaneIndex]);
+    }
+
+    gameInstance = null;
   }
 
   resetGame() {
@@ -241,6 +273,7 @@ class Game {
   }
 
   animate() {
+    if (this.stopped) return;
     requestAnimationFrame(() => this.animate());
 
     const dt = Math.min(this.clock.getDelta(), 0.05); // Cap delta time

@@ -32,6 +32,8 @@ export class GameStateManager {
     this.onRestartCallback = null;
     this.onSpawnWaveCallback = null;
     this.onReturnToLobbyCallback = null;
+    this.onVolumeChangeCallback = null;
+    this.onResumeCallback = null;
 
     this.setupUI();
   }
@@ -43,6 +45,21 @@ export class GameStateManager {
 
     document.getElementById('restart-btn').addEventListener('click', () => {
       this.restart();
+    });
+
+    document.getElementById('return-lobby-btn').addEventListener('click', () => {
+      this.returnToLobby();
+    });
+
+    // Volume slider
+    const volumeSlider = document.getElementById('volume-slider');
+    const volumeValue = document.getElementById('volume-value');
+    volumeSlider.addEventListener('input', () => {
+      const vol = parseInt(volumeSlider.value);
+      volumeValue.textContent = vol + '%';
+      if (this.onVolumeChangeCallback) {
+        this.onVolumeChangeCallback(vol / 100);
+      }
     });
   }
 
@@ -72,6 +89,7 @@ export class GameStateManager {
     if (this.state !== GameState.PAUSED) return;
     this.state = GameState.PLAYING;
     this.pauseScreen.classList.add('hidden');
+    if (this.onResumeCallback) this.onResumeCallback();
   }
 
   gameOver(victory = false) {
@@ -85,6 +103,15 @@ export class GameStateManager {
     this.gameoverScreen.classList.add('hidden');
     this.startGame();
     if (this.onRestartCallback) this.onRestartCallback();
+  }
+
+  returnToLobby() {
+    this.state = GameState.MENU;
+    this.pauseScreen.classList.add('hidden');
+    this.gameoverScreen.classList.add('hidden');
+    this.hud.classList.add('hidden');
+    this.menuScreen.classList.remove('hidden');
+    if (this.onReturnToLobbyCallback) this.onReturnToLobbyCallback();
   }
 
   addScore(points) {

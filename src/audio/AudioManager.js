@@ -42,39 +42,76 @@ export class AudioManager {
   }
 
   setupEngine() {
-    // Engine: layered oscillators
+    // Engine: soft triangle oscillator + deep sub rumble + filtered noise for texture
+    // Triangle is much gentler than sawtooth — no harsh harmonics
+
+    // Main tone — triangle for smooth hum
     this.engineOsc = this.ctx.createOscillator();
-    this.engineOsc.type = 'sawtooth';
+    this.engineOsc.type = 'triangle';
     this.engineOsc.frequency.value = AUDIO.ENGINE_BASE_FREQ;
 
-    // Sub-harmonic for rumble
+    // Sub-harmonic for deep rumble
     this.engineSubOsc = this.ctx.createOscillator();
     this.engineSubOsc.type = 'sine';
     this.engineSubOsc.frequency.value = AUDIO.ENGINE_BASE_FREQ / 2;
 
-    // Filter for body
+    // Noise layer for jet turbine texture
+    const noiseLen = this.ctx.sampleRate * 2;
+    const noiseBuf = this.ctx.createBuffer(1, noiseLen, this.ctx.sampleRate);
+    const noiseData = noiseBuf.getChannelData(0);
+    for (let i = 0; i < noiseLen; i++) {
+      noiseData[i] = Math.random() * 2 - 1;
+    }
+    this.engineNoise = this.ctx.createBufferSource();
+    this.engineNoise.buffer = noiseBuf;
+    this.engineNoise.loop = true;
+
+    // Heavy lowpass on main osc — removes any remaining edge
     this.engineFilter = this.ctx.createBiquadFilter();
     this.engineFilter.type = 'lowpass';
-    this.engineFilter.frequency.value = 400;
-    this.engineFilter.Q.value = 2;
+    this.engineFilter.frequency.value = 250;
+    this.engineFilter.Q.value = 0.5;
 
-    // Gain
+    // Second stage filter for extra smoothness
+    this.engineFilter2 = this.ctx.createBiquadFilter();
+    this.engineFilter2.type = 'lowpass';
+    this.engineFilter2.frequency.value = 350;
+    this.engineFilter2.Q.value = 0.5;
+
+    // Noise filter — bandpass to get a muffled roar, not a hiss
+    this.engineNoiseFilter = this.ctx.createBiquadFilter();
+    this.engineNoiseFilter.type = 'bandpass';
+    this.engineNoiseFilter.frequency.value = 200;
+    this.engineNoiseFilter.Q.value = 0.3;
+
+    // Gains
     this.engineGain = this.ctx.createGain();
-    this.engineGain.gain.value = 0.15;
+    this.engineGain.gain.value = 0.08;
 
     this.engineSubGain = this.ctx.createGain();
-    this.engineSubGain.gain.value = 0.1;
+    this.engineSubGain.gain.value = 0.12;
 
-    // Connect
+    this.engineNoiseGain = this.ctx.createGain();
+    this.engineNoiseGain.gain.value = 0.04;
+
+    // Connect main osc through double filter
     this.engineOsc.connect(this.engineFilter);
-    this.engineFilter.connect(this.engineGain);
+    this.engineFilter.connect(this.engineFilter2);
+    this.engineFilter2.connect(this.engineGain);
     this.engineGain.connect(this.masterGain);
 
+    // Sub osc direct (it's already a smooth sine)
     this.engineSubOsc.connect(this.engineSubGain);
     this.engineSubGain.connect(this.masterGain);
 
+    // Noise layer through bandpass
+    this.engineNoise.connect(this.engineNoiseFilter);
+    this.engineNoiseFilter.connect(this.engineNoiseGain);
+    this.engineNoiseGain.connect(this.masterGain);
+
     this.engineOsc.start();
     this.engineSubOsc.start();
+    this.engineNoise.start();
   }
 
   setupWind() {
@@ -112,15 +149,25 @@ export class AudioManager {
 
     // Engine pitch follows throttle
     const freq = AUDIO.ENGINE_BASE_FREQ + (AUDIO.ENGINE_MAX_FREQ - AUDIO.ENGINE_BASE_FREQ) * throttle;
-    this.engineOsc.frequency.setTargetAtTime(freq, t, 0.1);
-    this.engineSubOsc.frequency.setTargetAtTime(freq / 2, t, 0.1);
+    this.engineOsc.frequency.setTargetAtTime(freq, t, 0.15);
+    this.engineSubOsc.frequency.setTargetAtTime(freq / 2, t, 0.15);
 
-    // Engine volume
-    const vol = 0.08 + throttle * 0.12;
-    this.engineGain.gain.setTargetAtTime(vol, t, 0.1);
+    // Engine volume — gentle, never harsh
+    const vol = 0.05 + throttle * 0.07;
+    this.engineGain.gain.setTargetAtTime(vol, t, 0.15);
 
-    // Filter opens with throttle
-    this.engineFilter.frequency.setTargetAtTime(300 + throttle * 600, t, 0.1);
+    // Sub gets louder at high throttle for that deep rumble feel
+    const subVol = 0.08 + throttle * 0.10;
+    this.engineSubGain.gain.setTargetAtTime(subVol, t, 0.15);
+
+    // Noise layer adds texture at higher throttle
+    const noiseVol = 0.02 + throttle * 0.06;
+    this.engineNoiseGain.gain.setTargetAtTime(noiseVol, t, 0.15);
+
+    // Filters open slightly with throttle — but stay well below harsh frequencies
+    this.engineFilter.frequency.setTargetAtTime(200 + throttle * 200, t, 0.15);
+    this.engineFilter2.frequency.setTargetAtTime(250 + throttle * 250, t, 0.15);
+    this.engineNoiseFilter.frequency.setTargetAtTime(150 + throttle * 200, t, 0.15);
 
     // Wind proportional to speed
     const windVol = Math.min(AUDIO.MAX_WIND_GAIN, speed * AUDIO.WIND_GAIN_FACTOR);
@@ -131,31 +178,52 @@ export class AudioManager {
   playGunSound() {
     if (!this.initialized) return;
     if (this.gunSoundTimer > 0) return;
-    this.gunSoundTimer = 0.05;
+    this.gunSoundTimer = 0.06;
 
-    // Short burst of filtered noise
-    const duration = 0.04;
     const now = this.ctx.currentTime;
 
-    const osc = this.ctx.createOscillator();
-    osc.type = 'square';
-    osc.frequency.value = 150 + Math.random() * 50;
+    // === Noise crack — the main gunfire transient ===
+    const crackDur = 0.07;
+    const crackLen = Math.floor(this.ctx.sampleRate * crackDur);
+    const crackBuf = this.ctx.createBuffer(1, crackLen, this.ctx.sampleRate);
+    const crackData = crackBuf.getChannelData(0);
+    for (let i = 0; i < crackLen; i++) {
+      const t = i / crackLen;
+      crackData[i] = (Math.random() * 2 - 1) * Math.exp(-t * 40);
+    }
 
-    const noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.15, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    const crackSrc = this.ctx.createBufferSource();
+    crackSrc.buffer = crackBuf;
 
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = 2000;
-    filter.Q.value = 1;
+    const crackFilter = this.ctx.createBiquadFilter();
+    crackFilter.type = 'bandpass';
+    crackFilter.frequency.value = 1200 + Math.random() * 400;
+    crackFilter.Q.value = 0.8;
 
-    osc.connect(filter);
-    filter.connect(noiseGain);
-    noiseGain.connect(this.masterGain);
+    const crackGain = this.ctx.createGain();
+    crackGain.gain.setValueAtTime(0.35, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, now + crackDur);
 
-    osc.start(now);
-    osc.stop(now + duration);
+    crackSrc.connect(crackFilter);
+    crackFilter.connect(crackGain);
+    crackGain.connect(this.masterGain);
+    crackSrc.start(now);
+    crackSrc.stop(now + crackDur);
+
+    // === Low thump — the mechanical punch ===
+    const thumpOsc = this.ctx.createOscillator();
+    thumpOsc.type = 'sine';
+    thumpOsc.frequency.setValueAtTime(120 + Math.random() * 30, now);
+    thumpOsc.frequency.exponentialRampToValueAtTime(40, now + 0.05);
+
+    const thumpGain = this.ctx.createGain();
+    thumpGain.gain.setValueAtTime(0.25, now);
+    thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+    thumpOsc.connect(thumpGain);
+    thumpGain.connect(this.masterGain);
+    thumpOsc.start(now);
+    thumpOsc.stop(now + 0.06);
   }
 
   playMissileSound() {
@@ -384,6 +452,12 @@ export class AudioManager {
   suspend() {
     if (this.ctx && this.ctx.state === 'running') {
       this.ctx.suspend();
+    }
+  }
+
+  setVolume(value) {
+    if (this.masterGain) {
+      this.masterGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.05);
     }
   }
 }
