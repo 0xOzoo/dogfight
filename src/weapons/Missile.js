@@ -123,6 +123,13 @@ export class Missile {
         // Skip flares we already checked
         if (this._checkedFlares.has(flare)) continue;
 
+        // Skip friendly flares (closer to missile owner than to target)
+        if (this.owner && this.owner.position) {
+          const flareToOwner = flare.position.distanceTo(this.owner.position);
+          const flareToTarget = flare.position.distanceTo(this.target.position);
+          if (flareToOwner < flareToTarget) continue;
+        }
+
         const flareDir = flare.position.clone().sub(this.position);
         const targetDir = this.target.position.clone().sub(this.position);
 

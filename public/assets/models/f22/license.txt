@@ -1,0 +1,11 @@
+Model Information:
+* title:	Low poly F22 Raptor
+* source:	https://sketchfab.com/3d-models/low-poly-f22-raptor-6a6014b7c88745fb94e7dfa1c015cc55
+* author:	SIpriv (https://sketchfab.com/S1Priv)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Low poly F22 Raptor" (https://sketchfab.com/3d-models/low-poly-f22-raptor-6a6014b7c88745fb94e7dfa1c015cc55) by SIpriv (https://sketchfab.com/S1Priv) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

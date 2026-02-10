@@ -1,0 +1,11 @@
+Model Information:
+* title:	Chengdu J-20
+* source:	https://sketchfab.com/3d-models/chengdu-j-20-224b80788fd84ca2aff5cd0ec824f784
+* author:	42manako (https://sketchfab.com/42manako)
+
+Model License:
+* license type:	CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+* requirements:	Author must be credited. No commercial use.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Chengdu J-20" (https://sketchfab.com/3d-models/chengdu-j-20-224b80788fd84ca2aff5cd0ec824f784) by 42manako (https://sketchfab.com/42manako) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)

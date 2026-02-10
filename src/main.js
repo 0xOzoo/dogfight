@@ -21,11 +21,21 @@ import { Radar } from './hud/Radar.js';
 import { TargetIndicator } from './hud/TargetIndicator.js';
 import { AudioManager } from './audio/AudioManager.js';
 import { Balloon } from './entities/Balloon.js';
-import { BALLOON, AIRCRAFT } from './config.js';
+import { BALLOON, AIRCRAFT, PLANES, MAPS } from './config.js';
+import { LobbyPreview } from './ui/LobbyPreview.js';
+
+// Random default callsigns
+const DEFAULT_CALLSIGNS = [
+  'Maverick', 'Viper', 'Blaze', 'Cipher', 'Trigger', 'Phoenix',
+  'Ghost', 'Falcon', 'Reaper', 'Thunder', 'Cobra', 'Hawk',
+];
 
 class Game {
-  constructor(modelTemplate) {
+  constructor(modelTemplate, playerName, mapId, allModels) {
     this.modelTemplate = modelTemplate || null;
+    this.playerName = playerName || 'PILOT';
+    this.mapId = mapId || 'island';
+    this.allModels = allModels || [];
 
     // Core systems
     const canvas = document.getElementById('game-canvas');
@@ -57,6 +67,7 @@ class Game {
 
     // HUD
     this.hud = new HUD();
+    this.hud.playerName = this.playerName;
     this.radar = new Radar();
     this.targetIndicator = new TargetIndicator();
 
@@ -93,6 +104,9 @@ class Game {
 
     // Player trail
     this.playerTrail = null;
+
+    // Auto-start: lobby already handled menu selection
+    this.gameState.startGame();
 
     // Start the game loop
     this.animate();
@@ -182,7 +196,12 @@ class Game {
         spawnZ
       );
 
-      const enemy = new EnemyAircraft(this.sceneManager.scene, pos, this.modelTemplate);
+      // Pick a random model from all available models for enemy diversity
+      const availableModels = this.allModels.filter(m => m != null);
+      const enemyModel = availableModels.length > 0
+        ? availableModels[Math.floor(Math.random() * availableModels.length)]
+        : this.modelTemplate;
+      const enemy = new EnemyAircraft(this.sceneManager.scene, pos, enemyModel);
       this.enemies.push(enemy);
       this.enemyFlightModels.push(new FlightModel());
 
@@ -519,25 +538,129 @@ class Game {
   }
 }
 
-// Load GLTF model then start game
+// --- Lobby logic ---
+
+let lobbyPreview = null;
+let loadedModels = [];      // One entry per PLANES item (null if failed)
+let selectedPlaneIndex = 0;
+let selectedMapIndex = 0;
+let gameInstance = null;
+
+function getRandomCallsign() {
+  return DEFAULT_CALLSIGNS[Math.floor(Math.random() * DEFAULT_CALLSIGNS.length)];
+}
+
+function updatePlaneDisplay() {
+  const plane = PLANES[selectedPlaneIndex];
+  document.getElementById('plane-name').textContent = plane.name;
+  if (lobbyPreview) {
+    lobbyPreview.setModel(loadedModels[selectedPlaneIndex]);
+  }
+}
+
+function updateMapDisplay() {
+  const map = MAPS[selectedMapIndex];
+  document.getElementById('map-name').textContent = map.name;
+  document.getElementById('map-desc').textContent = map.description;
+}
+
+function startGame() {
+  const callsignInput = document.getElementById('callsign-input');
+  const playerName = callsignInput.value.trim() || callsignInput.placeholder.replace('Enter callsign...', '') || 'PILOT';
+
+  // Dispose lobby preview
+  if (lobbyPreview) {
+    lobbyPreview.dispose();
+    lobbyPreview = null;
+  }
+
+  const modelTemplate = loadedModels[selectedPlaneIndex] || null;
+  const mapId = MAPS[selectedMapIndex].id;
+
+  gameInstance = new Game(modelTemplate, playerName, mapId, loadedModels);
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   const loader = new GLTFLoader();
-  loader.load(
-    'assets/models/f16/scene.gltf',
-    (gltf) => {
-      const modelTemplate = gltf.scene;
-      modelTemplate.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
+  const callsignInput = document.getElementById('callsign-input');
+  const startBtn = document.getElementById('start-btn');
+
+  // Set random default callsign as placeholder
+  callsignInput.value = getRandomCallsign();
+
+  // Setup plane preview
+  const previewCanvas = document.getElementById('plane-preview-canvas');
+  lobbyPreview = new LobbyPreview(previewCanvas);
+  lobbyPreview.start();
+
+  // Load all plane models
+  let modelsLoaded = 0;
+  const totalModels = PLANES.length;
+
+  PLANES.forEach((plane, index) => {
+    loader.load(
+      plane.modelPath,
+      (gltf) => {
+        const modelTemplate = gltf.scene;
+        modelTemplate.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+        // Attach per-plane transform config to the template
+        modelTemplate._planeConfig = plane;
+        loadedModels[index] = modelTemplate;
+        modelsLoaded++;
+
+        // Show first plane once loaded
+        if (index === selectedPlaneIndex) {
+          updatePlaneDisplay();
         }
-      });
-      new Game(modelTemplate);
-    },
-    undefined,
-    (error) => {
-      console.warn('Failed to load F-16 model, using procedural mesh:', error);
-      new Game(null);
+      },
+      undefined,
+      (error) => {
+        console.warn(`Failed to load ${plane.name} model:`, error);
+        loadedModels[index] = null;
+        modelsLoaded++;
+      }
+    );
+  });
+
+  // Plane selector arrows
+  document.getElementById('plane-prev').addEventListener('click', () => {
+    selectedPlaneIndex = (selectedPlaneIndex - 1 + PLANES.length) % PLANES.length;
+    updatePlaneDisplay();
+  });
+  document.getElementById('plane-next').addEventListener('click', () => {
+    selectedPlaneIndex = (selectedPlaneIndex + 1) % PLANES.length;
+    updatePlaneDisplay();
+  });
+
+  // Map selector arrows
+  document.getElementById('map-prev').addEventListener('click', () => {
+    selectedMapIndex = (selectedMapIndex - 1 + MAPS.length) % MAPS.length;
+    updateMapDisplay();
+  });
+  document.getElementById('map-next').addEventListener('click', () => {
+    selectedMapIndex = (selectedMapIndex + 1) % MAPS.length;
+    updateMapDisplay();
+  });
+
+  // Start button
+  startBtn.addEventListener('click', () => {
+    startGame();
+  });
+
+  // Enter key to start
+  callsignInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      startGame();
     }
-  );
+  });
+
+  // Initial display
+  updatePlaneDisplay();
+  updateMapDisplay();
 });

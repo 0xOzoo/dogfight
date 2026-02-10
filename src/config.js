@@ -144,3 +144,20 @@ export const AUDIO = {
   WIND_GAIN_FACTOR: 0.003,
   MAX_WIND_GAIN: 0.4,
 };
+
+export const PLANES = [
+  // rotation: [rx, ry, rz] Euler angles to orient model so nose=-Z, top=+Y
+  // engines: [{x,y}] offsets from tail center for thruster positioning (post-normalization units)
+  { id: 'f16', name: 'F-16 FIGHTING FALCON', modelPath: 'assets/models/f16/scene.gltf',
+    rotation: [Math.PI, 0, 0], engines: [{x: 0, y: 0}] },
+  { id: 'f22', name: 'F-22 RAPTOR', modelPath: 'assets/models/f22/scene.gltf',
+    rotation: [0, 0, Math.PI], engines: [{x: -1.5, y: 0}, {x: 1.5, y: 0}] },
+  { id: 'j20', name: 'CHENGDU J-20', modelPath: 'assets/models/j20/scene.gltf',
+    rotation: [Math.PI, 0, 0], engines: [{x: -1.0, y: 0}, {x: 1.0, y: 0}] },
+  { id: 'mig21', name: 'MIG-21 FISHBED', modelPath: 'assets/models/mig21/scene.gltf',
+    rotation: [0, 0, Math.PI], engines: [{x: 0, y: 0}] },
+];
+
+export const MAPS = [
+  { id: 'island', name: 'ISLAND', description: 'Tropical island surrounded by ocean' },
+];

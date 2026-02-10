@@ -136,7 +136,8 @@ export class HUD {
 
     const weaponLabel = weapon === 'missile' ? 'MSL' : 'GUN';
     const victimName = this._getRandomPilotName();
-    entry.innerHTML = `<span class="kf-killer">YOU</span><span class="kf-weapon">\u2014${weaponLabel}\u2192</span><span class="kf-victim">${victimName}</span>`;
+    const killerName = this.playerName || 'YOU';
+    entry.innerHTML = `<span class="kf-killer">${killerName}</span><span class="kf-weapon">\u2014${weaponLabel}\u2192</span><span class="kf-victim">${victimName}</span>`;
 
     this.killfeed.appendChild(entry);
 

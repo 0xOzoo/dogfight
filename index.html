@@ -114,9 +114,42 @@
     <div id="menu-screen">
       <h1>DOGFIGHT</h1>
       <p class="subtitle">Combat Flight Simulator</p>
-      <button id="start-btn">START MISSION</button>
-      <div class="controls-info">
-        <h3>CONTROLS</h3>
+
+      <div id="lobby">
+        <div class="lobby-section">
+          <label class="lobby-label" for="callsign-input">CALLSIGN</label>
+          <input type="text" id="callsign-input" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Enter callsign...">
+        </div>
+
+        <div class="lobby-section">
+          <label class="lobby-label">AIRCRAFT</label>
+          <div class="selector-row">
+            <button class="selector-arrow" id="plane-prev">&lt;</button>
+            <div id="plane-preview-wrapper">
+              <canvas id="plane-preview-canvas"></canvas>
+            </div>
+            <button class="selector-arrow" id="plane-next">&gt;</button>
+          </div>
+          <div id="plane-name" class="selector-value">F-16 FIGHTING FALCON</div>
+        </div>
+
+        <div class="lobby-section">
+          <label class="lobby-label">MAP</label>
+          <div class="selector-row">
+            <button class="selector-arrow" id="map-prev">&lt;</button>
+            <div class="selector-info">
+              <div id="map-name" class="selector-value">CANYON LANDS</div>
+              <div id="map-desc" class="selector-desc">Deep canyons and mountain peaks</div>
+            </div>
+            <button class="selector-arrow" id="map-next">&gt;</button>
+          </div>
+        </div>
+
+        <button id="start-btn">START MISSION</button>
+      </div>
+
+      <details class="controls-info">
+        <summary>CONTROLS</summary>
         <p><b>Mouse</b> - Aim (plane follows cursor)</p>
         <p><b>W/S</b> - Pitch Down/Up</p>
         <p><b>A/D</b> - Roll Right/Left</p>
@@ -129,7 +162,7 @@
         <p><b>T</b> - Cycle Target</p>
         <p><b>V</b> - Toggle Camera View</p>
         <p><b>Esc</b> - Pause</p>
-      </div>
+      </details>
     </div>
 
     <div id="pause-screen" class="hidden">

@@ -31,15 +31,12 @@ export class GameStateManager {
     this.onStartCallback = null;
     this.onRestartCallback = null;
     this.onSpawnWaveCallback = null;
+    this.onReturnToLobbyCallback = null;
 
     this.setupUI();
   }
 
   setupUI() {
-    document.getElementById('start-btn').addEventListener('click', () => {
-      this.startGame();
-    });
-
     document.getElementById('resume-btn').addEventListener('click', () => {
       this.resume();
     });
@@ -54,6 +51,7 @@ export class GameStateManager {
     this.score = 0;
     this.wave = 0;
     this.totalKills = 0;
+    this.enemiesAlive = 0;
     this.waveTimer = 2; // small delay before first wave
 
     this.menuScreen.classList.add('hidden');

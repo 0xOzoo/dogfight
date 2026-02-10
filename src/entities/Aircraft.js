@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { AIRCRAFT, PHYSICS, CAMERA } from '../config.js';
 
+const TARGET_LENGTH = 20; // all models normalized to this length
+
 export class Aircraft {
   constructor(scene, modelTemplate) {
     this.scene = scene;
@@ -34,6 +36,9 @@ export class Aircraft {
     this.currentFov = CAMERA.FOV;
     this.zoomFov = 30; // Zoomed-in FOV for gun aiming
 
+    // Thrusters
+    this.thrusters = [];
+
     // Build mesh
     this.mesh = this.createMesh(modelTemplate);
     this.scene.add(this.mesh);
@@ -42,78 +47,112 @@ export class Aircraft {
   createMesh(modelTemplate) {
     const group = new THREE.Group();
 
-    // Exhaust position depends on which mesh we use
-    let exhaustZ = 8.0;
-    let afterburnerZ = 9.5;
-    let exhaustRadius = 0.4;
-    let abConeRadius = 0.3;
-    let abConeLength = 3;
-
     if (modelTemplate) {
-      // GLTF model: nose faces +Z, belly faces +Y (upside-down).
-      // Flip Y to right the model, flip Z so nose points -Z (game forward).
-      // Two negative axes = positive determinant = no reflection.
       const model = modelTemplate.clone();
-      const wrapper = new THREE.Group();
-      const scale = 8.0;
-      wrapper.scale.set(scale, -scale, -scale);
-      wrapper.add(model);
-      group.add(wrapper);
-      this.modelInner = wrapper;
+      const cfg = modelTemplate._planeConfig;
 
-      // Fix inverted face winding from negative Z scale
+      // Inner rotation group to fix model orientation (pure rotation, no scale flips)
+      const innerGroup = new THREE.Group();
+      if (cfg && cfg.rotation) {
+        innerGroup.rotation.set(cfg.rotation[0], cfg.rotation[1], cfg.rotation[2]);
+      }
+      innerGroup.add(model);
+
+      // Wrapper for uniform scaling
+      const wrapper = new THREE.Group();
+      wrapper.add(innerGroup);
+
+      // Auto-normalize: compute bounding box at unit scale, then scale to TARGET_LENGTH
+      const box = new THREE.Box3().setFromObject(wrapper);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const autoScale = maxDim > 0 ? TARGET_LENGTH / maxDim : 8;
+      wrapper.scale.set(autoScale, autoScale, autoScale);
+
+      // Fix face winding (DoubleSide for safety with any model)
       model.traverse((child) => {
         if (child.isMesh && child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(m => { m.side = THREE.DoubleSide; });
-          } else {
-            child.material.side = THREE.DoubleSide;
-          }
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach(m => { m.side = THREE.DoubleSide; });
         }
       });
 
-      // Model tail was at Z≈+0.40, after Z-flip → Z≈-0.40, scaled → Z≈+3.2
-      // (negative scale negates Z: +0.40 * -8 = -3.2 in wrapper, but wrapper is in group
-      //  where its local -Z maps to group +Z? No — the scale IS the wrapper transform.
-      //  Point at model Z=+0.40 → wrapper output: 0.40 * -8 = -3.2 in group space.
-      //  That's in FRONT of the plane. The tail should be BEHIND (+Z in group).
-      //  Model Z=-2.27 → -2.27 * -8 = +18.2 in group space = behind the plane.)
-      // So the actual tail (engine) end is at group Z ≈ +18, exhaust goes there.
-      exhaustZ = 18.5;
-      afterburnerZ = 20.0;
-      exhaustRadius = 0.5;
-      abConeRadius = 0.35;
-      abConeLength = 3;
+      group.add(wrapper);
+      this.modelInner = wrapper;
+
+      // Compute final bounding box for thruster positioning
+      const finalBox = new THREE.Box3().setFromObject(wrapper);
+      const tailZ = finalBox.max.z;
+
+      // Create thrusters at engine positions
+      const engines = (cfg && cfg.engines) || [{x: 0, y: 0}];
+      for (const engine of engines) {
+        const thruster = this.createThruster();
+        thruster.position.set(engine.x, engine.y, tailZ + 0.3);
+        group.add(thruster);
+        this.thrusters.push(thruster);
+      }
     } else {
       // Fallback procedural mesh
       this.modelInner = this.createProceduralMesh(group);
+      const thruster = this.createThruster();
+      thruster.position.set(0, 0, 8);
+      group.add(thruster);
+      this.thrusters.push(thruster);
     }
-
-    // Engine exhaust glow (positioned at tail of whichever model)
-    const exhaustGeom = new THREE.CircleGeometry(exhaustRadius, 16);
-    const exhaustMat = new THREE.MeshBasicMaterial({
-      color: 0xff6600,
-      transparent: true,
-      opacity: 0.6,
-    });
-    this.exhaustMesh = new THREE.Mesh(exhaustGeom, exhaustMat);
-    this.exhaustMesh.position.z = exhaustZ;
-    group.add(this.exhaustMesh);
-
-    // Afterburner cone (visible at high throttle)
-    const abGeom = new THREE.ConeGeometry(abConeRadius, abConeLength, 8);
-    abGeom.rotateX(-Math.PI / 2);
-    const abMat = new THREE.MeshBasicMaterial({
-      color: 0x4488ff,
-      transparent: true,
-      opacity: 0,
-    });
-    this.afterburnerMesh = new THREE.Mesh(abGeom, abMat);
-    this.afterburnerMesh.position.z = afterburnerZ;
-    group.add(this.afterburnerMesh);
 
     group.castShadow = true;
     return group;
+  }
+
+  createThruster() {
+    const thrusterGroup = new THREE.Group();
+
+    // Core glow (hot white-cyan center at nozzle)
+    const coreGeom = new THREE.SphereGeometry(0.45, 10, 10);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0xeeffff,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    thrusterGroup.userData.core = new THREE.Mesh(coreGeom, coreMat);
+    thrusterGroup.add(thrusterGroup.userData.core);
+
+    // Inner flame cone (bright cyan, extends backward)
+    const innerGeom = new THREE.ConeGeometry(0.4, 4, 10);
+    innerGeom.rotateX(-Math.PI / 2);
+    innerGeom.translate(0, 0, 2);
+    const innerMat = new THREE.MeshBasicMaterial({
+      color: 0x44ccff,
+      transparent: true,
+      opacity: 0.7,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    thrusterGroup.userData.innerFlame = new THREE.Mesh(innerGeom, innerMat);
+    thrusterGroup.add(thrusterGroup.userData.innerFlame);
+
+    // Outer flame cone (wider blue glow)
+    const outerGeom = new THREE.ConeGeometry(0.7, 6, 10);
+    outerGeom.rotateX(-Math.PI / 2);
+    outerGeom.translate(0, 0, 3);
+    const outerMat = new THREE.MeshBasicMaterial({
+      color: 0x2266dd,
+      transparent: true,
+      opacity: 0.25,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    thrusterGroup.userData.outerFlame = new THREE.Mesh(outerGeom, outerMat);
+    thrusterGroup.add(thrusterGroup.userData.outerFlame);
+
+    // Point light for dynamic glow on fuselage
+    thrusterGroup.userData.light = new THREE.PointLight(0x4488ff, 0, 15);
+    thrusterGroup.add(thrusterGroup.userData.light);
+
+    return thrusterGroup;
   }
 
   createProceduralMesh(group) {
@@ -121,11 +160,6 @@ export class Aircraft {
       color: 0x667788,
       specular: 0x333333,
       shininess: 40,
-    });
-    const darkMat = new THREE.MeshPhongMaterial({
-      color: 0x445566,
-      specular: 0x222222,
-      shininess: 30,
     });
     const intakeMat = new THREE.MeshPhongMaterial({
       color: 0x222222,
@@ -220,23 +254,41 @@ export class Aircraft {
     this.mesh.position.copy(this.position);
     this.mesh.quaternion.copy(this.quaternion);
 
-    // Exhaust glow based on throttle
-    if (this.exhaustMesh) {
-      this.exhaustMesh.material.opacity = 0.2 + this.throttle * 0.6;
-      const scale = 0.5 + this.throttle * 0.5;
-      this.exhaustMesh.scale.set(scale, scale, 1);
-    }
+    // Animate thrusters
+    const t = this.throttle;
+    const flicker = 0.92 + Math.random() * 0.16;
 
-    // Afterburner at high throttle
-    if (this.afterburnerMesh) {
-      if (this.throttle > 0.85) {
-        const abIntensity = (this.throttle - 0.85) / 0.15;
-        this.afterburnerMesh.material.opacity = abIntensity * 0.6;
-        const abScale = 0.5 + abIntensity * 0.5;
-        this.afterburnerMesh.scale.set(abScale, abScale, 0.5 + abIntensity * 0.5);
-      } else {
-        this.afterburnerMesh.material.opacity = 0;
+    for (const thruster of this.thrusters) {
+      const { core, innerFlame, outerFlame, light } = thruster.userData;
+
+      // Core glow: always visible, pulses with throttle
+      const coreScale = (0.3 + t * 0.7) * flicker;
+      core.scale.set(coreScale, coreScale, coreScale);
+      core.material.opacity = 0.3 + t * 0.6;
+
+      // Inner flame: visible above idle throttle
+      const innerIntensity = Math.max(0, (t - 0.15) / 0.85) * flicker;
+      innerFlame.visible = innerIntensity > 0.01;
+      if (innerFlame.visible) {
+        const isx = innerIntensity * 0.6 + 0.4;
+        innerFlame.scale.set(isx, isx, innerIntensity * 0.7 + 0.3);
+        innerFlame.material.opacity = innerIntensity * 0.7;
       }
+
+      // Outer flame: afterburner zone above 50% throttle
+      if (t > 0.5) {
+        const outerIntensity = ((t - 0.5) / 0.5) * flicker;
+        outerFlame.visible = true;
+        const osx = outerIntensity * 0.6 + 0.4;
+        outerFlame.scale.set(osx, osx, outerIntensity * 0.8 + 0.2);
+        outerFlame.material.opacity = outerIntensity * 0.3;
+      } else {
+        outerFlame.visible = false;
+      }
+
+      // Point light: illuminates fuselage rear
+      light.intensity = t * 3 * flicker;
+      light.distance = 8 + t * 12;
     }
   }
 

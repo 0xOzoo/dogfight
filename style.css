@@ -392,18 +392,144 @@ button:hover {
   box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
 }
 
-.controls-info {
-  margin-top: 40px;
-  text-align: left;
-  color: rgba(0, 255, 136, 0.6);
-  font-size: 13px;
-  line-height: 1.8;
+/* Lobby */
+#lobby {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  max-width: 460px;
 }
 
-.controls-info h3 {
-  color: #00ff88;
-  margin-bottom: 10px;
+.lobby-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.lobby-label {
+  font-size: 11px;
   letter-spacing: 4px;
+  color: rgba(0, 255, 136, 0.5);
+}
+
+#callsign-input {
+  background: rgba(0, 20, 10, 0.6);
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  color: #00ff88;
+  font-family: 'Courier New', monospace;
+  font-size: 18px;
+  padding: 8px 16px;
+  text-align: center;
+  letter-spacing: 3px;
+  width: 280px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#callsign-input::placeholder {
+  color: rgba(0, 255, 136, 0.25);
+  letter-spacing: 2px;
+}
+
+#callsign-input:focus {
+  border-color: #00ff88;
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.2);
+}
+
+.selector-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.selector-arrow {
+  background: transparent;
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  color: #00ff88;
+  font-size: 24px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  letter-spacing: 0;
+  transition: all 0.2s;
+}
+
+.selector-arrow:hover {
+  background: rgba(0, 255, 136, 0.15);
+  border-color: #00ff88;
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.2);
+}
+
+#plane-preview-wrapper {
+  width: 220px;
+  height: 160px;
+  border: 1px solid rgba(0, 255, 136, 0.25);
+  background: rgba(0, 10, 5, 0.5);
+  overflow: hidden;
+}
+
+#plane-preview-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.selector-value {
+  font-size: 14px;
+  color: #00ff88;
+  letter-spacing: 3px;
+  font-weight: bold;
+}
+
+.selector-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 220px;
+}
+
+.selector-desc {
+  font-size: 11px;
+  color: rgba(0, 255, 136, 0.4);
+  letter-spacing: 1px;
+}
+
+.controls-info {
+  margin-top: 20px;
+  text-align: left;
+  color: rgba(0, 255, 136, 0.6);
+  font-size: 12px;
+  line-height: 1.8;
+  cursor: pointer;
+}
+
+.controls-info summary {
+  color: rgba(0, 255, 136, 0.5);
+  letter-spacing: 4px;
+  font-size: 11px;
+  text-align: center;
+  list-style: none;
+}
+
+.controls-info summary::-webkit-details-marker {
+  display: none;
+}
+
+.controls-info summary::before {
+  content: '[ + ] ';
+}
+
+.controls-info[open] summary::before {
+  content: '[ - ] ';
 }
 
 .controls-info b {
