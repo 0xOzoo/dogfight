@@ -21,6 +21,7 @@ import { Radar } from './hud/Radar.js';
 import { TargetIndicator } from './hud/TargetIndicator.js';
 import { AudioManager } from './audio/AudioManager.js';
 import { Balloon } from './entities/Balloon.js';
+import { StaticProp } from './entities/StaticProp.js';
 import { BALLOON, AIRCRAFT, PLANES, MAPS } from './config.js';
 import { LobbyPreview } from './ui/LobbyPreview.js';
 
@@ -82,6 +83,9 @@ class Game {
     // Balloons
     this.balloons = [];
     this.balloonRespawnTimers = [];
+
+    // Static plane props (destroyable but not lockable)
+    this.staticProps = [];
 
 
     // Track previous health for damage flash
@@ -155,8 +159,17 @@ class Game {
     this.balloons.length = 0;
     this.balloonRespawnTimers.length = 0;
 
+    // Clear static props
+    for (const prop of this.staticProps) {
+      prop.destroy();
+    }
+    this.staticProps.length = 0;
+
     // Spawn balloons
     this.spawnBalloons();
+
+    // Spawn static plane props at airbase
+    this.spawnStaticProps();
 
     // Setup player trail
     this.playerTrail = this.trails.createTrail(this.player);
@@ -181,6 +194,19 @@ class Game {
     const pos = new THREE.Vector3(x, y, z);
     const balloon = new Balloon(this.sceneManager.scene, pos);
     this.balloons.push(balloon);
+  }
+
+  spawnStaticProps() {
+    if (!this.terrain.propPositions || this.terrain.propPositions.length === 0) return;
+    const availableModels = this.allModels.filter(m => m != null);
+    if (availableModels.length === 0) return;
+
+    for (const spot of this.terrain.propPositions) {
+      const model = availableModels[Math.floor(Math.random() * availableModels.length)];
+      const pos = new THREE.Vector3(spot.x, spot.y, spot.z);
+      const prop = new StaticProp(this.sceneManager.scene, pos, spot.heading, model);
+      this.staticProps.push(prop);
+    }
   }
 
   spawnWave(wave, count) {
@@ -267,6 +293,15 @@ class Game {
       return;
     }
 
+    // Building collision
+    if (this.terrain.checkBuildingCollision(this.player.position)) {
+      this.player.alive = false;
+      this.explosions.spawn(this.player.position);
+      this.audio.playExplosionSound(0);
+      this.gameState.gameOver(false);
+      return;
+    }
+
     // Player mesh update
     this.player.updateMesh();
 
@@ -301,7 +336,7 @@ class Game {
     this.flareSystem.update(dt);
 
     // Projectile hits
-    const allTargets = [this.player, ...this.enemies, ...this.balloons];
+    const allTargets = [this.player, ...this.enemies, ...this.balloons, ...this.staticProps];
     const hits = this.projectilePool.update(dt, allTargets, this.terrain);
     for (const hit of hits) {
       this.explosions.spawn(hit.position);
@@ -378,7 +413,7 @@ class Game {
       }
 
       // AI terrain collision (should never trigger now but kept as safety)
-      if (this.terrain.checkCollision(enemy.position)) {
+      if (this.terrain.checkCollision(enemy.position) || this.terrain.checkBuildingCollision(enemy.position)) {
         enemy.alive = false;
         continue;
       }
@@ -481,6 +516,20 @@ class Game {
         this.balloons.splice(i, 1);
         // Schedule respawn
         this.balloonRespawnTimers.push(BALLOON.RESPAWN_TIME);
+      }
+    }
+
+    // Static prop destruction
+    for (let i = this.staticProps.length - 1; i >= 0; i--) {
+      const prop = this.staticProps[i];
+      if (!prop.alive) {
+        this.explosions.spawn(prop.position);
+        this.audio.playExplosionSound(
+          this.player.position.distanceTo(prop.position)
+        );
+        this.gameState.addScore(25);
+        prop.destroy();
+        this.staticProps.splice(i, 1);
       }
     }
 

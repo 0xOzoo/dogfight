@@ -28,7 +28,8 @@
       "Bash(git push:*)",
       "Bash(git rm:*)",
       "Bash(for z in /mnt/HDD_2To/LABO/Vibecoding/dogfight/assets/*.zip)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(npx vite build:*)"
     ]
   }
 }

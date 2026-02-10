@@ -7,6 +7,8 @@ export class Terrain {
     this.mapId = mapId;
     this.heightData = null;
     this.mesh = null;
+    this.buildingColliders = [];
+    this.propPositions = []; // Static plane prop spawn positions
 
     if (mapId === 'coastal_city') {
       this.generateCoastalCity();
@@ -16,6 +18,8 @@ export class Terrain {
       this.addNavalBase();
       this.addDestroyerShip();
       this.addCanyonBridges();
+      this.addDesertVillages();
+      this.addMilitaryBase();
     } else {
       this.generate();
       this.addTrees();
@@ -684,6 +688,25 @@ export class Terrain {
     this._navalZ = 2500;
     this._destroyerX = 4200;
     this._destroyerZ = 3200;
+    this._airbaseX = -2500;
+    this._airbaseZ = -1500;
+    this._oasisX = -2000;
+    this._oasisZ = -500;
+    this._villages = [
+      { x: -3500, z: -3000 },
+      { x: 2500, z: -2500 },
+      { x: -1000, z: -4000 },
+    ];
+
+    // River path from oasis to coast
+    this._riverPath = [
+      { x: -2000, z: -500 },
+      { x: -1500, z: 200 },
+      { x: -1000, z: 700 },
+      { x: -400, z: 1300 },
+      { x: 100, z: 1900 },
+      { x: 300, z: 2500 },
+    ];
 
     const geometry = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS);
     geometry.rotateX(-Math.PI / 2);
@@ -770,6 +793,65 @@ export class Terrain {
         height = height * (1 - flat * flat * 0.95) + 0.02 * flat * flat;
       }
 
+      // 6b. River carving — find min distance to river path
+      let minRiverDist = Infinity;
+      let riverT = 0; // 0=oasis, 1=coast
+      const rp = this._riverPath;
+      for (let s = 0; s < rp.length - 1; s++) {
+        const ax = rp[s].x, az = rp[s].z;
+        const bx = rp[s + 1].x, bz = rp[s + 1].z;
+        const abx = bx - ax, abz = bz - az;
+        const apx = x - ax, apz = z - az;
+        const lenSq = abx * abx + abz * abz;
+        let t = Math.max(0, Math.min(1, (apx * abx + apz * abz) / lenSq));
+        const projX = ax + abx * t, projZ = az + abz * t;
+        const d = Math.sqrt((x - projX) ** 2 + (z - projZ) ** 2);
+        if (d < minRiverDist) {
+          minRiverDist = d;
+          riverT = (s + t) / (rp.length - 1);
+        }
+      }
+
+      // River width varies: narrow at oasis, wider at coast
+      const riverWidth = 40 + riverT * 100;
+      const riverBank = riverWidth + 80;
+      if (minRiverDist < riverWidth) {
+        height = Math.min(height, 0.002); // Below water level
+      } else if (minRiverDist < riverBank && !inOcean) {
+        const bankFactor = 1 - (minRiverDist - riverWidth) / (riverBank - riverWidth);
+        height = Math.min(height, height * (1 - bankFactor * 0.8) + 0.003 * bankFactor);
+      }
+
+      // Oasis lake
+      const oasisDist = Math.sqrt((x - this._oasisX) ** 2 + (z - this._oasisZ) ** 2);
+      if (oasisDist < 400) {
+        const oasisFactor = Math.max(0, 1 - oasisDist / 400);
+        if (oasisDist < 200) {
+          height = Math.min(height, 0.002);
+        } else {
+          height = Math.min(height, height * (1 - oasisFactor * 0.9) + 0.003 * oasisFactor);
+        }
+      }
+
+      // 6c. Flatten airbase area (long rectangle for airstrip)
+      const abDx = Math.abs(x - this._airbaseX);
+      const abDz = Math.abs(z - this._airbaseZ);
+      if (abDx < 1600 && abDz < 400) {
+        const abFx = Math.max(0, 1 - abDx / 1600);
+        const abFz = Math.max(0, 1 - abDz / 400);
+        const abFlat = abFx * abFz;
+        height = height * (1 - abFlat * 0.9) + 0.06 * abFlat;
+      }
+
+      // 6d. Flatten desert village areas
+      for (const v of this._villages) {
+        const vDist = Math.sqrt((x - v.x) ** 2 + (z - v.z) ** 2);
+        if (vDist < 350) {
+          const vFlat = Math.max(0, 1 - vDist / 350);
+          height = height * (1 - vFlat * vFlat * 0.85) + 0.05 * vFlat * vFlat;
+        }
+      }
+
       // 7. Spawn area safety — cap height near (0,0)
       const spawnDist = Math.sqrt(x * x + z * z);
       if (spawnDist < 800) {
@@ -827,6 +909,30 @@ export class Terrain {
         b = b * (1 - blend) + 0.45 * blend;
       }
 
+      // Oasis / river bank — green tint
+      if (height > WATER_LEVEL) {
+        let greenBlend = 0;
+        if (oasisDist < 500) {
+          greenBlend = Math.max(greenBlend, (1 - oasisDist / 500) * 0.8);
+        }
+        if (minRiverDist < riverBank + 60) {
+          greenBlend = Math.max(greenBlend, (1 - minRiverDist / (riverBank + 60)) * 0.5);
+        }
+        if (greenBlend > 0) {
+          r = r * (1 - greenBlend) + 0.25 * greenBlend;
+          g = g * (1 - greenBlend) + 0.50 * greenBlend;
+          b = b * (1 - greenBlend) + 0.15 * greenBlend;
+        }
+      }
+
+      // Airbase — dark tarmac tint
+      if (abDx < 1600 && abDz < 400 && height > WATER_LEVEL) {
+        const abBlend = Math.max(0, 1 - Math.max(abDx / 1600, abDz / 400)) * 0.6;
+        r = r * (1 - abBlend) + 0.35 * abBlend;
+        g = g * (1 - abBlend) + 0.33 * abBlend;
+        b = b * (1 - abBlend) + 0.30 * abBlend;
+      }
+
       const variation = (this.seededRandom(i) - 0.5) * 0.04;
       colors[i] = r + variation;
       colors[i + 1] = g + variation;
@@ -846,15 +952,77 @@ export class Terrain {
 
   addDesertVegetation() {
     const { SIZE, MAX_HEIGHT, WATER_LEVEL } = TERRAIN;
-    const maxBushes = 2000;
+    const maxBushes = 2500;
 
     const bushGeom = new THREE.IcosahedronGeometry(1, 0);
     const bushMat = new THREE.MeshLambertMaterial({ color: 0x8a7a3a });
     const bushInstance = new THREE.InstancedMesh(bushGeom, bushMat, maxBushes);
 
+    // Oasis palms / lush vegetation
+    const palmCrownGeom = new THREE.IcosahedronGeometry(1, 1);
+    const palmMat = new THREE.MeshLambertMaterial({ color: 0x2d8a2d });
+    const palmInstance = new THREE.InstancedMesh(palmCrownGeom, palmMat, 600);
+    const trunkGeom = new THREE.CylinderGeometry(0.12, 0.2, 1, 5);
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6b4226 });
+    const trunkInstance = new THREE.InstancedMesh(trunkGeom, trunkMat, 600);
+
     const dummy = new THREE.Object3D();
     let idx = 0;
+    let palmIdx = 0, trunkIdx = 0;
 
+    // Oasis and riverbank vegetation
+    for (let i = 0; i < 2000 && palmIdx < 600; i++) {
+      const seed = (i + 50000) * 31.17;
+      // Spread around oasis and river
+      let x, z;
+      if (this.seededRandom(seed + 10) < 0.4) {
+        // Around oasis
+        const angle = this.seededRandom(seed) * Math.PI * 2;
+        const dist = 100 + this.seededRandom(seed + 1) * 400;
+        x = this._oasisX + Math.cos(angle) * dist;
+        z = this._oasisZ + Math.sin(angle) * dist;
+      } else {
+        // Along river
+        const rp = this._riverPath;
+        const seg = Math.floor(this.seededRandom(seed + 2) * (rp.length - 1));
+        const t = this.seededRandom(seed + 3);
+        const rx = rp[seg].x + (rp[Math.min(seg + 1, rp.length - 1)].x - rp[seg].x) * t;
+        const rz = rp[seg].z + (rp[Math.min(seg + 1, rp.length - 1)].z - rp[seg].z) * t;
+        const offset = (this.seededRandom(seed + 4) - 0.5) * 200;
+        const perpAngle = Math.atan2(rp[Math.min(seg + 1, rp.length - 1)].z - rp[seg].z, rp[Math.min(seg + 1, rp.length - 1)].x - rp[seg].x) + Math.PI / 2;
+        x = rx + Math.cos(perpAngle) * offset;
+        z = rz + Math.sin(perpAngle) * offset;
+      }
+
+      const height = this.getHeightAt(x, z);
+      if (height < WATER_LEVEL + 1 || height > WATER_LEVEL + 80) continue;
+
+      const treeScale = 8 + this.seededRandom(seed + 5) * 12;
+      const trunkH = treeScale * 0.8;
+
+      // Trunk
+      dummy.position.set(x, height + trunkH / 2, z);
+      dummy.scale.set(treeScale * 0.2, trunkH, treeScale * 0.2);
+      dummy.rotation.set(0, this.seededRandom(seed + 6) * Math.PI * 2, (this.seededRandom(seed + 7) - 0.5) * 0.3);
+      dummy.updateMatrix();
+      trunkInstance.setMatrixAt(trunkIdx++, dummy.matrix);
+
+      // Crown
+      dummy.position.set(x, height + trunkH + treeScale * 0.3, z);
+      dummy.scale.set(treeScale * 0.7, treeScale * 0.5, treeScale * 0.7);
+      dummy.rotation.set(0, this.seededRandom(seed + 8) * Math.PI * 2, 0);
+      dummy.updateMatrix();
+      palmInstance.setMatrixAt(palmIdx++, dummy.matrix);
+    }
+
+    palmInstance.count = palmIdx;
+    trunkInstance.count = trunkIdx;
+    palmInstance.instanceMatrix.needsUpdate = true;
+    trunkInstance.instanceMatrix.needsUpdate = true;
+    this.scene.add(palmInstance);
+    this.scene.add(trunkInstance);
+
+    // Desert bushes
     for (let i = 0; i < maxBushes * 6 && idx < maxBushes; i++) {
       const seed = i * 23.71 + 100;
       const x = (this.seededRandom(seed) - 0.5) * SIZE * 0.85;
@@ -862,15 +1030,15 @@ export class Terrain {
       const height = this.getHeightAt(x, z);
       const nh = height / MAX_HEIGHT;
 
-      // Only in desert zones, not city, not underwater, not mesa tops
       if (height < WATER_LEVEL + 4 || nh > 0.55 || nh < 0.03) continue;
 
       const cityDist = Math.sqrt((x - this._cityX) ** 2 + (z - this._cityZ) ** 2);
       if (cityDist < 1500) continue;
       const navDist = Math.sqrt((x - this._navalX) ** 2 + (z - this._navalZ) ** 2);
       if (navDist < 600) continue;
+      const abDist = Math.abs(x - this._airbaseX) < 1600 && Math.abs(z - this._airbaseZ) < 400;
+      if (abDist) continue;
 
-      // Sparse density
       if (this.seededRandom(seed + 2) > 0.15) continue;
 
       const scale = 3 + this.seededRandom(seed + 3) * 6;
@@ -894,19 +1062,14 @@ export class Terrain {
     const glassMat = new THREE.MeshLambertMaterial({ color: 0x5588aa });
     const darkSteelMat = new THREE.MeshLambertMaterial({ color: 0x555566 });
     const residentialMat = new THREE.MeshLambertMaterial({ color: 0xccbb99 });
-
     const boxGeom = new THREE.BoxGeometry(1, 1, 1);
 
-    // Downtown skyscrapers
-    const towerInstance = new THREE.InstancedMesh(boxGeom, darkSteelMat, 60);
-    const towerGlass = new THREE.InstancedMesh(boxGeom, glassMat, 60);
-    // Inner city
-    const innerInstance = new THREE.InstancedMesh(boxGeom, concreteMat, 150);
-    const innerGlass = new THREE.InstancedMesh(boxGeom, glassMat, 150);
-    // Neighborhoods
-    const residInstance = new THREE.InstancedMesh(boxGeom, residentialMat, 400);
-    // Suburban
-    const suburbanInstance = new THREE.InstancedMesh(boxGeom, residentialMat, 150);
+    const towerInstance = new THREE.InstancedMesh(boxGeom, darkSteelMat, 200);
+    const towerGlass = new THREE.InstancedMesh(boxGeom, glassMat, 200);
+    const innerInstance = new THREE.InstancedMesh(boxGeom, concreteMat, 300);
+    const innerGlass = new THREE.InstancedMesh(boxGeom, glassMat, 300);
+    const residInstance = new THREE.InstancedMesh(boxGeom, residentialMat, 600);
+    const suburbanInstance = new THREE.InstancedMesh(boxGeom, residentialMat, 200);
 
     towerInstance.castShadow = true;
     innerInstance.castShadow = true;
@@ -915,101 +1078,111 @@ export class Terrain {
     const dummy = new THREE.Object3D();
     let tIdx = 0, tgIdx = 0, iIdx = 0, igIdx = 0, rIdx = 0, sIdx = 0;
 
-    // === DOWNTOWN CORE (radius 0-600) ===
-    for (let i = 0; i < 55 && tIdx < 60; i++) {
-      const seed = (i + 80000) * 67.13;
-      const angle = this.seededRandom(seed) * Math.PI * 2;
-      const dist = this.seededRandom(seed + 1) * 600;
-      const bx = cx + Math.cos(angle) * dist;
-      const bz = cz + Math.sin(angle) * dist;
-      const bh = this.getHeightAt(bx, bz);
-      if (bh < WATER_LEVEL + 2) continue;
+    const _addCollider = (bx, bz, w, d, bh, h) => {
+      this.buildingColliders.push({
+        x: bx, z: bz,
+        radius: Math.max(w, d) / 2 + 2,
+        bottom: bh, top: bh + h,
+      });
+    };
 
-      const distRatio = dist / 600;
-      const width = 15 + this.seededRandom(seed + 2) * 20;
-      const height = 150 + this.seededRandom(seed + 3) * 200 * (1 - distRatio * 0.5);
-      const depth = 15 + this.seededRandom(seed + 4) * 20;
-      const rotation = Math.floor(this.seededRandom(seed + 5) * 4) * Math.PI * 0.5;
+    // === DOWNTOWN CORE — tight Manhattan-style grid ===
+    const gridSize = 100; // cell size (building + street)
+    const streetW = 35;   // street gap between buildings
+    const gridExtent = 7; // 7x7 grid = 700m across
 
-      dummy.position.set(bx, bh + height / 2, bz);
-      dummy.scale.set(width, height, depth);
-      dummy.rotation.set(0, rotation, 0);
-      dummy.updateMatrix();
-      towerInstance.setMatrixAt(tIdx++, dummy.matrix);
+    for (let row = -gridExtent; row <= gridExtent; row++) {
+      for (let col = -gridExtent; col <= gridExtent; col++) {
+        const cellX = cx + col * gridSize;
+        const cellZ = cz + row * gridSize;
+        const distFromCenter = Math.sqrt((col * gridSize) ** 2 + (row * gridSize) ** 2);
 
-      // Glass overlay
-      if (tgIdx < 60) {
-        dummy.scale.set(width * 1.01, height * 0.95, depth * 1.01);
-        dummy.updateMatrix();
-        towerGlass.setMatrixAt(tgIdx++, dummy.matrix);
+        const bh = this.getHeightAt(cellX, cellZ);
+        if (bh < WATER_LEVEL + 2) continue;
+
+        const seed = (row * 100 + col + 80000) * 67.13;
+
+        // Skip some cells randomly for variety / intersections
+        if (this.seededRandom(seed + 10) > 0.85) continue;
+
+        const bw = gridSize - streetW + (this.seededRandom(seed + 2) - 0.5) * 10;
+        const bd = gridSize - streetW + (this.seededRandom(seed + 4) - 0.5) * 10;
+
+        let height;
+        if (distFromCenter < 400) {
+          // Downtown core: very tall skyscrapers
+          height = 150 + this.seededRandom(seed + 3) * 250;
+          if (tIdx < 200) {
+            dummy.position.set(cellX, bh + height / 2, cellZ);
+            dummy.scale.set(bw, height, bd);
+            dummy.rotation.set(0, 0, 0);
+            dummy.updateMatrix();
+            towerInstance.setMatrixAt(tIdx++, dummy.matrix);
+            if (tgIdx < 200) {
+              dummy.scale.set(bw * 1.01, height * 0.96, bd * 1.01);
+              dummy.updateMatrix();
+              towerGlass.setMatrixAt(tgIdx++, dummy.matrix);
+            }
+          }
+        } else if (distFromCenter < 800) {
+          // Inner city: medium-tall
+          height = 50 + this.seededRandom(seed + 3) * 80;
+          if (iIdx < 300) {
+            dummy.position.set(cellX, bh + height / 2, cellZ);
+            dummy.scale.set(bw, height, bd);
+            dummy.rotation.set(0, 0, 0);
+            dummy.updateMatrix();
+            innerInstance.setMatrixAt(iIdx++, dummy.matrix);
+            if (igIdx < 300 && height > 60) {
+              dummy.scale.set(bw * 1.01, height * 0.96, bd * 1.01);
+              dummy.updateMatrix();
+              innerGlass.setMatrixAt(igIdx++, dummy.matrix);
+            }
+          }
+        } else {
+          continue; // Beyond inner city, use neighborhoods below
+        }
+
+        _addCollider(cellX, cellZ, bw, bd, bh, height);
       }
     }
 
-    // === INNER CITY (radius 600-1200) ===
-    for (let i = 0; i < 130 && iIdx < 150; i++) {
-      const seed = (i + 81000) * 59.17;
-      const angle = this.seededRandom(seed) * Math.PI * 2;
-      const dist = 600 + this.seededRandom(seed + 1) * 600;
-      const bx = cx + Math.cos(angle) * dist;
-      const bz = cz + Math.sin(angle) * dist;
-      const bh = this.getHeightAt(bx, bz);
-      if (bh < WATER_LEVEL + 2) continue;
-
-      const width = 12 + this.seededRandom(seed + 2) * 18;
-      const height = 40 + this.seededRandom(seed + 3) * 60;
-      const depth = 12 + this.seededRandom(seed + 4) * 18;
-      const rotation = Math.floor(this.seededRandom(seed + 5) * 4) * Math.PI * 0.5;
-
-      dummy.position.set(bx, bh + height / 2, bz);
-      dummy.scale.set(width, height, depth);
-      dummy.rotation.set(0, rotation, 0);
-      dummy.updateMatrix();
-      innerInstance.setMatrixAt(iIdx++, dummy.matrix);
-
-      if (igIdx < 150 && height > 50) {
-        dummy.scale.set(width * 1.01, height * 0.95, depth * 1.01);
-        dummy.updateMatrix();
-        innerGlass.setMatrixAt(igIdx++, dummy.matrix);
-      }
-    }
-
-    // === NEIGHBORHOODS (radius 1200-1800, grid clusters) ===
+    // === NEIGHBORHOODS — grid clusters with wider streets ===
     const neighborhoods = [
-      { x: cx - 1200, z: cz - 400 },
-      { x: cx - 800, z: cz + 800 },
-      { x: cx + 1000, z: cz - 600 },
-      { x: cx + 400, z: cz + 1200 },
-      { x: cx - 400, z: cz - 1200 },
+      { x: cx - 1400, z: cz - 400 },
+      { x: cx - 900, z: cz + 900 },
+      { x: cx + 1100, z: cz - 500 },
+      { x: cx + 500, z: cz + 1300 },
+      { x: cx - 500, z: cz - 1300 },
+      { x: cx + 1300, z: cz + 600 },
     ];
 
     for (const hood of neighborhoods) {
-      for (let row = 0; row < 8 && rIdx < 400; row++) {
-        for (let col = 0; col < 8 && rIdx < 400; col++) {
+      for (let row = 0; row < 6 && rIdx < 600; row++) {
+        for (let col = 0; col < 6 && rIdx < 600; col++) {
           const seed = (rIdx + 82000) * 43.91;
-          // Grid pattern with street gaps
-          const bx = hood.x + col * 55 - 180 + (this.seededRandom(seed) - 0.5) * 10;
-          const bz = hood.z + row * 55 - 180 + (this.seededRandom(seed + 1) - 0.5) * 10;
+          const bx = hood.x + col * 65 - 150 + (this.seededRandom(seed) - 0.5) * 8;
+          const bz = hood.z + row * 65 - 150 + (this.seededRandom(seed + 1) - 0.5) * 8;
           const bh = this.getHeightAt(bx, bz);
           if (bh < WATER_LEVEL + 2) continue;
+          if (this.seededRandom(seed + 2) > 0.75) { rIdx++; continue; }
 
-          // Skip some for variety
-          if (this.seededRandom(seed + 2) > 0.7) { rIdx++; continue; }
-
-          const width = 10 + this.seededRandom(seed + 3) * 12;
-          const height = 12 + this.seededRandom(seed + 4) * 18;
-          const depth = 10 + this.seededRandom(seed + 5) * 12;
+          const width = 30 + this.seededRandom(seed + 3) * 20;
+          const height = 15 + this.seededRandom(seed + 4) * 25;
+          const depth = 30 + this.seededRandom(seed + 5) * 20;
 
           dummy.position.set(bx, bh + height / 2, bz);
           dummy.scale.set(width, height, depth);
-          dummy.rotation.set(0, Math.floor(this.seededRandom(seed + 6) * 4) * Math.PI * 0.5, 0);
+          dummy.rotation.set(0, 0, 0);
           dummy.updateMatrix();
           residInstance.setMatrixAt(rIdx++, dummy.matrix);
+          _addCollider(bx, bz, width, depth, bh, height);
         }
       }
     }
 
-    // === SUBURBAN (scattered small buildings) ===
-    for (let i = 0; i < 200 && sIdx < 150; i++) {
+    // === SUBURBAN scatter ===
+    for (let i = 0; i < 300 && sIdx < 200; i++) {
       const seed = (i + 83000) * 37.13;
       const angle = this.seededRandom(seed) * Math.PI * 2;
       const dist = 1800 + this.seededRandom(seed + 1) * 800;
@@ -1018,15 +1191,16 @@ export class Terrain {
       const bh = this.getHeightAt(bx, bz);
       if (bh < WATER_LEVEL + 2 || bh / TERRAIN.MAX_HEIGHT > 0.15) continue;
 
-      const width = 8 + this.seededRandom(seed + 2) * 10;
-      const height = 6 + this.seededRandom(seed + 3) * 9;
-      const depth = 8 + this.seededRandom(seed + 4) * 10;
+      const width = 12 + this.seededRandom(seed + 2) * 15;
+      const height = 8 + this.seededRandom(seed + 3) * 12;
+      const depth = 12 + this.seededRandom(seed + 4) * 15;
 
       dummy.position.set(bx, bh + height / 2, bz);
       dummy.scale.set(width, height, depth);
       dummy.rotation.set(0, this.seededRandom(seed + 5) * Math.PI, 0);
       dummy.updateMatrix();
       suburbanInstance.setMatrixAt(sIdx++, dummy.matrix);
+      _addCollider(bx, bz, width, depth, bh, height);
     }
 
     towerInstance.count = tIdx;
@@ -1036,19 +1210,10 @@ export class Terrain {
     residInstance.count = rIdx;
     suburbanInstance.count = sIdx;
 
-    towerInstance.instanceMatrix.needsUpdate = true;
-    towerGlass.instanceMatrix.needsUpdate = true;
-    innerInstance.instanceMatrix.needsUpdate = true;
-    innerGlass.instanceMatrix.needsUpdate = true;
-    residInstance.instanceMatrix.needsUpdate = true;
-    suburbanInstance.instanceMatrix.needsUpdate = true;
-
-    this.scene.add(towerInstance);
-    this.scene.add(towerGlass);
-    this.scene.add(innerInstance);
-    this.scene.add(innerGlass);
-    this.scene.add(residInstance);
-    this.scene.add(suburbanInstance);
+    for (const inst of [towerInstance, towerGlass, innerInstance, innerGlass, residInstance, suburbanInstance]) {
+      inst.instanceMatrix.needsUpdate = true;
+      this.scene.add(inst);
+    }
   }
 
   addHighways() {
@@ -1415,6 +1580,239 @@ export class Terrain {
         this.scene.add(tower);
       }
     }
+  }
+
+  addDesertVillages() {
+    const { WATER_LEVEL } = TERRAIN;
+
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0xc4a882 });
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0xa08060 });
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x8a7a5a });
+    const boxGeom = new THREE.BoxGeometry(1, 1, 1);
+
+    const wallInstance = new THREE.InstancedMesh(boxGeom, wallMat, 300);
+    const roofInstance = new THREE.InstancedMesh(boxGeom, roofMat, 300);
+    const darkInstance = new THREE.InstancedMesh(boxGeom, darkMat, 100);
+    wallInstance.castShadow = true;
+
+    const dummy = new THREE.Object3D();
+    let wIdx = 0, rIdx = 0, dIdx = 0;
+
+    for (const village of this._villages) {
+      const vx = village.x, vz = village.z;
+      const buildingCount = 25 + Math.floor(this.seededRandom(vx * 0.01 + vz * 0.01) * 20);
+
+      for (let b = 0; b < buildingCount && wIdx < 300; b++) {
+        const seed = (wIdx + 70000) * 59.17;
+        const angle = this.seededRandom(seed) * Math.PI * 2;
+        const dist = this.seededRandom(seed + 1) * 250;
+
+        const bx = vx + Math.cos(angle) * dist;
+        const bz = vz + Math.sin(angle) * dist;
+        const bh = this.getHeightAt(bx, bz);
+
+        if (bh < WATER_LEVEL + 2) continue;
+
+        const width = 8 + this.seededRandom(seed + 2) * 12;
+        const height = 5 + this.seededRandom(seed + 3) * 7;
+        const depth = 8 + this.seededRandom(seed + 4) * 12;
+        const rotation = Math.floor(this.seededRandom(seed + 5) * 4) * Math.PI / 2;
+
+        dummy.position.set(bx, bh + height / 2, bz);
+        dummy.scale.set(width, height, depth);
+        dummy.rotation.set(0, rotation, 0);
+        dummy.updateMatrix();
+        wallInstance.setMatrixAt(wIdx, dummy.matrix);
+
+        dummy.position.set(bx, bh + height + 0.5, bz);
+        dummy.scale.set(width + 1, 1, depth + 1);
+        dummy.updateMatrix();
+        roofInstance.setMatrixAt(rIdx++, dummy.matrix);
+
+        wIdx++;
+      }
+
+      // Market structure at village center
+      if (dIdx < 100) {
+        const ch = this.getHeightAt(vx, vz);
+        dummy.position.set(vx, ch + 4, vz);
+        dummy.scale.set(15, 0.5, 15);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        darkInstance.setMatrixAt(dIdx++, dummy.matrix);
+
+        for (const corner of [[-6, -6], [6, -6], [6, 6], [-6, 6]]) {
+          if (dIdx >= 100) break;
+          dummy.position.set(vx + corner[0], ch + 2, vz + corner[1]);
+          dummy.scale.set(0.5, 4, 0.5);
+          dummy.updateMatrix();
+          darkInstance.setMatrixAt(dIdx++, dummy.matrix);
+        }
+      }
+
+      // Compound walls
+      for (let w = 0; w < 3 && dIdx < 100; w++) {
+        const seed = (w + vx * 100 + 71000) * 43.71;
+        const wx = vx + (this.seededRandom(seed) - 0.5) * 200;
+        const wz = vz + (this.seededRandom(seed + 1) - 0.5) * 200;
+        const wh = this.getHeightAt(wx, wz);
+        const wallLen = 30 + this.seededRandom(seed + 2) * 40;
+        const wallAngle = this.seededRandom(seed + 3) * Math.PI;
+
+        dummy.position.set(wx, wh + 2, wz);
+        dummy.scale.set(1.5, 4, wallLen);
+        dummy.rotation.set(0, wallAngle, 0);
+        dummy.updateMatrix();
+        darkInstance.setMatrixAt(dIdx++, dummy.matrix);
+      }
+    }
+
+    wallInstance.count = wIdx;
+    roofInstance.count = rIdx;
+    darkInstance.count = dIdx;
+    wallInstance.instanceMatrix.needsUpdate = true;
+    roofInstance.instanceMatrix.needsUpdate = true;
+    darkInstance.instanceMatrix.needsUpdate = true;
+    this.scene.add(wallInstance);
+    this.scene.add(roofInstance);
+    this.scene.add(darkInstance);
+  }
+
+  addMilitaryBase() {
+    const { WATER_LEVEL } = TERRAIN;
+    const ax = this._airbaseX, az = this._airbaseZ;
+    const baseH = Math.max(this.getHeightAt(ax, az), WATER_LEVEL + 2);
+
+    const tarmacMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+    const markingMat = new THREE.MeshLambertMaterial({ color: 0xcccccc });
+    const concreteMat = new THREE.MeshLambertMaterial({ color: 0x777777 });
+    const metalMat = new THREE.MeshLambertMaterial({ color: 0x666666 });
+    const glassMat = new THREE.MeshLambertMaterial({ color: 0x5588aa });
+    const greenMat = new THREE.MeshLambertMaterial({ color: 0x556b2f });
+
+    // Main runway — 2800m long, 50m wide
+    const runwayGeom = new THREE.BoxGeometry(2800, 1, 50);
+    const runway = new THREE.Mesh(runwayGeom, tarmacMat);
+    runway.position.set(ax, baseH + 0.5, az);
+    runway.castShadow = true;
+    this.scene.add(runway);
+
+    // Runway center line
+    const lineGeom = new THREE.BoxGeometry(2800, 1.1, 2);
+    const centerLine = new THREE.Mesh(lineGeom, markingMat);
+    centerLine.position.set(ax, baseH + 0.6, az);
+    this.scene.add(centerLine);
+
+    // Runway threshold markings
+    for (const endX of [ax - 1350, ax + 1350]) {
+      for (let s = -3; s <= 3; s++) {
+        const stripeGeom = new THREE.BoxGeometry(30, 1.1, 3);
+        const stripe = new THREE.Mesh(stripeGeom, markingMat);
+        stripe.position.set(endX, baseH + 0.6, az + s * 6);
+        this.scene.add(stripe);
+      }
+    }
+
+    // Taxiway
+    const taxiwayGeom = new THREE.BoxGeometry(600, 1, 30);
+    const taxiway = new THREE.Mesh(taxiwayGeom, tarmacMat);
+    taxiway.position.set(ax + 200, baseH + 0.5, az - 80);
+    this.scene.add(taxiway);
+
+    // Apron (parking area)
+    const apronGeom = new THREE.BoxGeometry(400, 1, 200);
+    const apron = new THREE.Mesh(apronGeom, tarmacMat);
+    apron.position.set(ax + 200, baseH + 0.5, az - 200);
+    this.scene.add(apron);
+
+    // Hangars
+    for (let h = 0; h < 4; h++) {
+      const hx = ax - 200 + h * 150;
+      const hz = az - 350;
+      const hangarGeom = new THREE.BoxGeometry(60, 20, 40);
+      const hangar = new THREE.Mesh(hangarGeom, metalMat);
+      hangar.position.set(hx, baseH + 10, hz);
+      hangar.castShadow = true;
+      this.scene.add(hangar);
+
+      const doorGeom = new THREE.BoxGeometry(50, 16, 1);
+      const door = new THREE.Mesh(doorGeom, new THREE.MeshLambertMaterial({ color: 0x444444 }));
+      door.position.set(hx, baseH + 8, hz + 20.5);
+      this.scene.add(door);
+    }
+
+    // Control tower
+    const towerH = 45;
+    const towerGeom = new THREE.BoxGeometry(12, towerH, 12);
+    const tower = new THREE.Mesh(towerGeom, concreteMat);
+    tower.position.set(ax + 500, baseH + towerH / 2, az - 300);
+    tower.castShadow = true;
+    this.scene.add(tower);
+
+    const cabGeom = new THREE.BoxGeometry(16, 8, 16);
+    const cab = new THREE.Mesh(cabGeom, glassMat);
+    cab.position.set(ax + 500, baseH + towerH + 4, az - 300);
+    this.scene.add(cab);
+
+    const radarGeom = new THREE.SphereGeometry(4, 8, 8);
+    const radar = new THREE.Mesh(radarGeom, new THREE.MeshLambertMaterial({ color: 0xaaaaaa }));
+    radar.position.set(ax + 500, baseH + towerH + 12, az - 300);
+    this.scene.add(radar);
+
+    // Fuel depot
+    const fuelGeom = new THREE.CylinderGeometry(6, 6, 12, 10);
+    for (let f = 0; f < 4; f++) {
+      const fuel = new THREE.Mesh(fuelGeom, new THREE.MeshLambertMaterial({ color: 0x888888 }));
+      fuel.position.set(ax - 500 + f * 30, baseH + 6, az - 280);
+      fuel.castShadow = true;
+      this.scene.add(fuel);
+    }
+
+    // Military crates
+    for (let v = 0; v < 8; v++) {
+      const seed = (v + 95000) * 31.17;
+      const vx = ax + (this.seededRandom(seed) - 0.5) * 800;
+      const vz = az - 150 - this.seededRandom(seed + 1) * 200;
+      const crateGeom = new THREE.BoxGeometry(
+        4 + this.seededRandom(seed + 2) * 6,
+        3 + this.seededRandom(seed + 3) * 4,
+        4 + this.seededRandom(seed + 4) * 6
+      );
+      const crate = new THREE.Mesh(crateGeom, greenMat);
+      crate.position.set(vx, baseH + 2, vz);
+      this.scene.add(crate);
+    }
+
+    // Plane prop spawn positions on the apron
+    const propSpots = [
+      { x: ax + 100, z: az - 180, heading: Math.PI * 0.5 },
+      { x: ax + 250, z: az - 180, heading: Math.PI * 0.5 },
+      { x: ax + 350, z: az - 220, heading: Math.PI * 0.3 },
+      { x: ax - 50, z: az - 150, heading: -Math.PI * 0.5 },
+      { x: ax + 150, z: az - 250, heading: Math.PI * 0.7 },
+      { x: ax - 200, z: az + 30, heading: 0 },
+    ];
+
+    for (const spot of propSpots) {
+      this.propPositions.push({
+        x: spot.x,
+        y: baseH + 2,
+        z: spot.z,
+        heading: spot.heading,
+      });
+    }
+  }
+
+  checkBuildingCollision(position) {
+    for (const c of this.buildingColliders) {
+      const dx = position.x - c.x;
+      const dz = position.z - c.z;
+      const dist2D = Math.sqrt(dx * dx + dz * dz);
+      if (dist2D < c.radius && position.y > c.bottom && position.y < c.top) {
+        return true;
+      }
+    }
+    return false;
   }
 
   getHeightAt(x, z) {
