@@ -62,6 +62,8 @@ class Trail {
 
     this.leftLine.frustumCulled = false;
     this.rightLine.frustumCulled = false;
+    this.leftLine.userData.excludeAO = true;
+    this.rightLine.userData.excludeAO = true;
 
     this.scene.add(this.leftLine);
     this.scene.add(this.rightLine);
@@ -86,6 +88,7 @@ class Trail {
     });
     this.vortexLeftMesh = new THREE.Mesh(this.vortexLeftGeom, this.vortexLeftMat);
     this.vortexLeftMesh.frustumCulled = false;
+    this.vortexLeftMesh.userData.excludeAO = true;
     this.scene.add(this.vortexLeftMesh);
 
     // Right vortex ribbon
@@ -100,6 +103,7 @@ class Trail {
     });
     this.vortexRightMesh = new THREE.Mesh(this.vortexRightGeom, this.vortexRightMat);
     this.vortexRightMesh.frustumCulled = false;
+    this.vortexRightMesh.userData.excludeAO = true;
     this.scene.add(this.vortexRightMesh);
 
     this.vortexSpawnTimer = 0;

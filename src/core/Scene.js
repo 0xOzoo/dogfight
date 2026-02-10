@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { CAMERA, WORLD } from '../config.js';
 
 export class SceneManager {
@@ -36,6 +40,9 @@ export class SceneManager {
     // Lights
     this.setupLights();
 
+    // Post-processing
+    this.setupPostProcessing();
+
     // Resize handler
     window.addEventListener('resize', () => this.onResize());
   }
@@ -72,15 +79,75 @@ export class SceneManager {
     this.scene.add(this.hemiLight);
   }
 
+  setupPostProcessing() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    this.composer = new EffectComposer(this.renderer);
+
+    // Scene render pass
+    const renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(renderPass);
+
+    // GTAO (Ground Truth Ambient Occlusion)
+    this.gtaoPass = new GTAOPass(
+      this.scene,
+      this.camera,
+      width,
+      height,
+      {
+        // render parameters — use default normal source
+      },
+      {
+        // AO parameters
+        radius: 3,
+        distanceExponent: 2,
+        thickness: 5,
+        scale: 1.0,
+        samples: 16,
+        distanceFallOff: 1.0,
+      },
+      {
+        // Poisson denoise parameters
+        rings: 2,
+        radiusExponent: 2,
+        samples: 16,
+        lumaPhi: 10,
+        depthPhi: 2,
+        normalPhi: 3,
+      }
+    );
+    this.gtaoPass.output = GTAOPass.OUTPUT.Default;
+    this.gtaoPass.blendIntensity = 1.0;
+
+    // Override visibility to also exclude objects tagged with excludeAO
+    const origOverride = this.gtaoPass.overrideVisibility.bind(this.gtaoPass);
+    this.gtaoPass.overrideVisibility = () => {
+      origOverride();
+      this.scene.traverse((object) => {
+        if (object.userData && object.userData.excludeAO) {
+          object.visible = false;
+        }
+      });
+    };
+
+    this.composer.addPass(this.gtaoPass);
+
+    // Output pass (tone mapping + sRGB conversion)
+    const outputPass = new OutputPass();
+    this.composer.addPass(outputPass);
+  }
+
   onResize() {
     const width = window.innerWidth;
     const height = window.innerHeight;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    this.composer.setSize(width, height);
   }
 
   render() {
-    this.renderer.render(this.scene, this.camera);
+    this.composer.render();
   }
 }
