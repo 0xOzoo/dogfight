@@ -138,6 +138,13 @@ class Game {
     // Stop the game loop
     this.stopped = true;
 
+    // Clean up HUD elements
+    this.hud.destroy();
+    this.targetIndicator.destroy();
+
+    // Hide HUD container
+    document.getElementById('hud').classList.add('hidden');
+
     // Clean up scene
     while (this.sceneManager.scene.children.length > 0) {
       this.sceneManager.scene.remove(this.sceneManager.scene.children[0]);

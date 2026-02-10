@@ -222,4 +222,22 @@ export class HUD {
 
     this.warningText = warning;
   }
+
+  destroy() {
+    // Clear killfeed
+    if (this.killfeed) this.killfeed.innerHTML = '';
+    // Hide missile warning
+    if (this.missileWarning) this.missileWarning.classList.add('hidden');
+    // Hide ammo replenish
+    if (this.ammoReplenish) this.ammoReplenish.classList.add('hidden');
+    if (this._replenishTimer) clearTimeout(this._replenishTimer);
+    // Clear warnings
+    if (this.warnings) this.warnings.textContent = '';
+    // Hide wave display
+    const waveDisplay = document.getElementById('wave-display');
+    if (waveDisplay) waveDisplay.classList.add('hidden');
+    // Reset state
+    this._killIndex = 0;
+    this._usedNames = [];
+  }
 }

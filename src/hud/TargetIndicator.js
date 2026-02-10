@@ -321,4 +321,28 @@ export class TargetIndicator {
       this.lockZoneCircle.style.borderStyle = 'dashed';
     }
   }
+
+  destroy() {
+    // Remove marker pool elements
+    for (const marker of this.markerPool) {
+      if (marker.element.parentNode) marker.element.parentNode.removeChild(marker.element);
+    }
+    this.markerPool.length = 0;
+    // Remove lead marker
+    if (this.leadMarker && this.leadMarker.parentNode) {
+      this.leadMarker.parentNode.removeChild(this.leadMarker);
+    }
+    // Remove lock zone circle
+    if (this.lockZoneCircle && this.lockZoneCircle.parentNode) {
+      this.lockZoneCircle.parentNode.removeChild(this.lockZoneCircle);
+    }
+    // Hide target info panel
+    if (this.targetInfo) this.targetInfo.classList.add('hidden');
+    // Reset lock indicator
+    if (this.lockIndicator) {
+      this.lockIndicator.classList.remove('locked');
+      this.lockIndicator.style.borderColor = '';
+      this.lockIndicator.style.borderStyle = '';
+    }
+  }
 }
