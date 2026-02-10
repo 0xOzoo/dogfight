@@ -45,7 +45,7 @@ class Game {
     this.clock = new THREE.Clock();
 
     // World
-    this.terrain = new Terrain(this.sceneManager.scene);
+    this.terrain = new Terrain(this.sceneManager.scene, this.mapId);
     this.sky = new Sky(this.sceneManager.scene);
     this.environment = new Environment(this.sceneManager.scene);
 

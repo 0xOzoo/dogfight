@@ -160,4 +160,5 @@ export const PLANES = [
 
 export const MAPS = [
   { id: 'island', name: 'ISLAND', description: 'Tropical island surrounded by ocean' },
+  { id: 'coastal_city', name: 'COASTAL CITY', description: 'Desert canyons and a sprawling coastal metropolis' },
 ];
