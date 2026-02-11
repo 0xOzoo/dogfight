@@ -17,6 +17,7 @@ export class HUD {
 
     // Missile warning
     this.missileWarning = document.getElementById('missile-warning');
+    this.missileWarningHint = document.getElementById('missile-warning-hint');
 
     // Ammo replenish notification
     this.ammoReplenish = document.getElementById('ammo-replenish');
@@ -152,10 +153,15 @@ export class HUD {
     }
   }
 
-  setMissileWarning(active) {
+  setMissileWarning(active, useGamepad) {
     if (!this.missileWarning) return;
     if (active) {
       this.missileWarning.classList.remove('hidden');
+      if (this.missileWarningHint) {
+        this.missileWarningHint.textContent = useGamepad
+          ? 'DEPLOY FLARES [B]'
+          : 'DEPLOY FLARES [X]';
+      }
     } else {
       this.missileWarning.classList.add('hidden');
     }

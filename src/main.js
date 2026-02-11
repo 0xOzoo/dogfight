@@ -509,7 +509,7 @@ class Game {
       this.missileWarningActive = false;
     }
     if (this.hud.setMissileWarning) {
-      this.hud.setMissileWarning(incomingToPlayer.length > 0);
+      this.hud.setMissileWarning(incomingToPlayer.length > 0, this.input._gamepadActive);
     }
 
     // Altitude warning
