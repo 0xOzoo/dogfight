@@ -299,7 +299,7 @@ body {
 }
 
 /* Controls hint */
-#controls-hint {
+.controls-hint {
   position: absolute;
   bottom: 60px;
   left: 16px;

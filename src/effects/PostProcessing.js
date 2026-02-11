@@ -29,15 +29,15 @@ export class PostProcessing {
       const alpha = Math.max(0, this.damageFlashTimer / 0.2 * 0.3);
       this.overlay.style.opacity = '1';
       this.overlay.style.background = `rgba(255, 0, 0, ${alpha})`;
-    }
-
-    // Sonic boom flash - white flash that fades quickly
-    if (this.sonicBoomFlashTimer > 0) {
+    } else if (this.sonicBoomFlashTimer > 0) {
+      // Sonic boom flash - white flash that fades quickly
       this.sonicBoomFlashTimer -= dt;
       const t = Math.max(0, this.sonicBoomFlashTimer / 0.4);
       const alpha = t * t * 0.25; // quadratic fade, max 25% opacity
       this.overlay.style.opacity = '1';
       this.overlay.style.background = `rgba(255, 255, 255, ${alpha})`;
+    } else {
+      this.overlay.style.opacity = '0';
     }
 
     // Camera shake
@@ -52,5 +52,9 @@ export class PostProcessing {
     this.damageFlashTimer = 0;
     this.sonicBoomFlashTimer = 0;
     this.shakeIntensity = 0;
+    if (this.overlay) {
+      this.overlay.style.opacity = '0';
+      this.overlay.style.background = '';
+    }
   }
 }

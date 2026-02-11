@@ -295,23 +295,23 @@ export class Aircraft {
   updateCamera(camera, dt, zoomActive) {
     // Smooth FOV zoom
     const targetFov = zoomActive ? this.zoomFov : CAMERA.FOV;
-    const zoomSpeed = 8; // Higher = faster transition
+    const zoomSpeed = 8;
     this.currentFov += (targetFov - this.currentFov) * Math.min(1, zoomSpeed * dt);
     camera.fov = this.currentFov;
     camera.updateProjectionMatrix();
 
     if (this.cameraMode === 0) {
-      // Ace Combat-style chase camera: close behind, slightly above
+      // Chase camera
+      const lerpFactor = 1 - Math.exp(-CAMERA.CHASE_LERP * dt);
+
       const idealOffset = new THREE.Vector3(0, CAMERA.CHASE_HEIGHT, CAMERA.CHASE_DISTANCE);
       idealOffset.applyQuaternion(this.quaternion);
       idealOffset.add(this.position);
 
-      // Look ahead - close so the plane stays centered and prominent
       const lookTarget = this.position.clone().add(
         this.getForwardDirection().multiplyScalar(30)
       );
 
-      const lerpFactor = 1 - Math.exp(-CAMERA.CHASE_LERP * dt);
       camera.position.lerp(idealOffset, lerpFactor);
       camera.lookAt(lookTarget);
     } else {
@@ -319,9 +319,8 @@ export class Aircraft {
       const cockpitPos = new THREE.Vector3(0, CAMERA.COCKPIT_OFFSET_Y, -CAMERA.COCKPIT_OFFSET_Z);
       cockpitPos.applyQuaternion(this.quaternion);
       cockpitPos.add(this.position);
-
       camera.position.copy(cockpitPos);
-      camera.quaternion.copy(this.quaternion);
+
       const lookOffset = this.getForwardDirection().multiplyScalar(100);
       camera.lookAt(this.position.clone().add(lookOffset));
     }

@@ -116,7 +116,7 @@ export class TargetIndicator {
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      border: 1.5px dashed rgba(255, 102, 0, 0.35);
+      border: 1.5px dashed rgba(255, 102, 0, 0.55);
       border-radius: 50%;
       pointer-events: none;
       z-index: 40;
@@ -317,7 +317,7 @@ export class TargetIndicator {
       this.lockZoneCircle.style.borderColor = 'rgba(255, 170, 0, 0.5)';
       this.lockZoneCircle.style.borderStyle = 'dashed';
     } else {
-      this.lockZoneCircle.style.borderColor = 'rgba(255, 102, 0, 0.25)';
+      this.lockZoneCircle.style.borderColor = 'rgba(255, 102, 0, 0.55)';
       this.lockZoneCircle.style.borderStyle = 'dashed';
     }
   }

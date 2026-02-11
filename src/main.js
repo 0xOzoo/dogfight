@@ -125,13 +125,18 @@ class Game {
   onGameStart() {
     this.audio.init();
     this.resetGame();
+    this.input.requestPointerLock();
   }
 
   onRestart() {
     this.resetGame();
+    this.input.requestPointerLock();
   }
 
   onReturnToLobby() {
+    // Release pointer lock for lobby UI
+    this.input.exitPointerLock();
+
     // Stop audio
     this.audio.suspend();
 
@@ -306,9 +311,11 @@ class Game {
       this.gameState.togglePause();
       if (this.gameState.state === GameState.PAUSED) {
         this.audio.suspend();
+        this.input.exitPointerLock();
         return;
       } else {
         this.audio.resume();
+        this.input.requestPointerLock();
       }
     }
 
@@ -329,6 +336,7 @@ class Game {
       this.player.alive = false;
       this.explosions.spawn(this.player.position);
       this.audio.playExplosionSound(0);
+      this.input.exitPointerLock();
       this.gameState.gameOver(false);
       return;
     }
@@ -338,6 +346,7 @@ class Game {
       this.player.alive = false;
       this.explosions.spawn(this.player.position);
       this.audio.playExplosionSound(0);
+      this.input.exitPointerLock();
       this.gameState.gameOver(false);
       return;
     }
@@ -521,6 +530,7 @@ class Game {
     if (!this.player.alive) {
       this.explosions.spawn(this.player.position);
       this.audio.playExplosionSound(0);
+      this.input.exitPointerLock();
       this.gameState.gameOver(false);
       return;
     }
