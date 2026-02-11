@@ -250,9 +250,10 @@ export class Aircraft {
     }
   }
 
-  updateMesh() {
+  updateMesh(input = null) {
     this.mesh.position.copy(this.position);
     this.mesh.quaternion.copy(this.quaternion);
+    this.mesh.updateMatrixWorld();
 
     // Animate thrusters
     const t = this.throttle;
@@ -302,6 +303,8 @@ export class Aircraft {
 
     if (this.cameraMode === 0) {
       // Chase camera
+      if (this.mesh) this.mesh.visible = true;
+
       const lerpFactor = 1 - Math.exp(-CAMERA.CHASE_LERP * dt);
 
       const idealOffset = new THREE.Vector3(0, CAMERA.CHASE_HEIGHT, CAMERA.CHASE_DISTANCE);
@@ -313,16 +316,32 @@ export class Aircraft {
       );
 
       camera.position.lerp(idealOffset, lerpFactor);
+      camera.up.set(0, 1, 0);
       camera.lookAt(lookTarget);
     } else {
-      // Cockpit camera
-      const cockpitPos = new THREE.Vector3(0, CAMERA.COCKPIT_OFFSET_Y, -CAMERA.COCKPIT_OFFSET_Z);
-      cockpitPos.applyQuaternion(this.quaternion);
-      cockpitPos.add(this.position);
-      camera.position.copy(cockpitPos);
+      // Cockpit view (FPV) - first person from pilot's eye position
+      if (this.mesh) this.mesh.visible = false;
 
-      const lookOffset = this.getForwardDirection().multiplyScalar(100);
-      camera.lookAt(this.position.clone().add(lookOffset));
+      // Calculate pilot eye position based on model rotation
+      const cfg = this.modelTemplate?._planeConfig;
+      const innerRot = new THREE.Euler(
+        cfg?.rotation?.[0] || 0,
+        cfg?.rotation?.[1] || 0,
+        cfg?.rotation?.[2] || 0
+      );
+      const innerQuat = new THREE.Quaternion().setFromEuler(innerRot);
+
+      // Eye position offset (slightly forward and up)
+      const eyeOffset = new THREE.Vector3(0, 1.2, 2.0);
+      eyeOffset.applyQuaternion(innerQuat);
+      eyeOffset.applyQuaternion(this.quaternion);
+      eyeOffset.add(this.position);
+      camera.position.copy(eyeOffset);
+
+      // Look forward from aircraft orientation
+      const forward = this.getForwardDirection();
+      camera.up.set(0, 1, 0);
+      camera.lookAt(this.position.clone().add(forward.multiplyScalar(100)));
     }
   }
 
@@ -337,5 +356,6 @@ export class Aircraft {
     this.alive = true;
     this.gForce = 1;
     this.cameraMode = 0;
+    if (this.mesh) this.mesh.visible = true;
   }
 }

@@ -400,8 +400,8 @@ class Game {
       return;
     }
 
-    // Player mesh update
-    this.player.updateMesh();
+    // Player mesh update (pass input for cockpit stick animation)
+    this.player.updateMesh(this.input);
 
     // Weapons
     this.machineGun.update(dt, this.player, this.input.firing);

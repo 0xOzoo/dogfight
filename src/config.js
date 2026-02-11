@@ -165,4 +165,6 @@ export const MAPS = [
     tiles3d: { lat: 40.748817, lon: -73.985428, alt: 0, spawnAlt: 800, label: 'NYC' } },
   { id: 'paris', name: 'PARIS', description: 'Fly over the Eiffel Tower and the City of Light',
     tiles3d: { lat: 48.858370, lon: 2.294481, alt: 0, spawnAlt: 600, label: 'Paris' } },
+  { id: 'grand_canyon', name: 'GRAND CANYON', description: 'Weave through the epic canyon walls and mesas',
+    tiles3d: { lat: 36.098944, lon: -112.243194, alt: 0, spawnAlt: 1300, label: 'Grand Canyon' } },
 ];
