@@ -161,4 +161,8 @@ export const PLANES = [
 export const MAPS = [
   { id: 'island', name: 'ISLAND', description: 'Tropical island surrounded by ocean' },
   { id: 'coastal_city', name: 'COASTAL CITY', description: 'Desert canyons and a sprawling coastal metropolis' },
+  { id: 'nyc', name: 'NEW YORK CITY', description: 'Real satellite 3D cityscape of Manhattan',
+    tiles3d: { lat: 40.748817, lon: -73.985428, alt: 0, spawnAlt: 800, label: 'NYC' } },
+  { id: 'paris', name: 'PARIS', description: 'Fly over the Eiffel Tower and the City of Light',
+    tiles3d: { lat: 48.858370, lon: 2.294481, alt: 0, spawnAlt: 600, label: 'Paris' } },
 ];

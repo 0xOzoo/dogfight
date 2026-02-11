@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TERRAIN } from '../config.js';
+import { TERRAIN, MAPS } from '../config.js';
 
 export class Terrain {
   constructor(scene, mapId = 'island') {
@@ -10,7 +10,17 @@ export class Terrain {
     this.buildingColliders = [];
     this.propPositions = []; // Static plane prop spawn positions
 
-    if (mapId === 'coastal_city') {
+    // MapManager reference (set externally for 3D-tile maps)
+    this.mapManager = null;
+
+    // Check if this map uses 3D tiles
+    const mapCfg = MAPS.find(m => m.id === mapId);
+    this.is3DTileMap = !!(mapCfg && mapCfg.tiles3d);
+
+    if (this.is3DTileMap) {
+      // 3D tile maps (NYC, Paris, etc.) use MapManager - just create water/ground plane
+      this.generateTilesBase();
+    } else if (mapId === 'coastal_city') {
       this.generateCoastalCity();
       this.addDesertVegetation();
       this.addCityBuildings();
@@ -257,6 +267,53 @@ export class Terrain {
 
     this.water = new THREE.Mesh(waterGeometry, this.waterMaterial);
     this.water.position.y = WATER_LEVEL;
+    this.scene.add(this.water);
+  }
+
+  generateTilesBase() {
+    const { SIZE, WATER_LEVEL } = TERRAIN;
+
+    // Flat height data (sea level everywhere - 3D tiles provide actual geometry)
+    const SEGMENTS = TERRAIN.SEGMENTS;
+    this.heightData = new Float32Array((SEGMENTS + 1) * (SEGMENTS + 1));
+    // All zeros = sea level
+
+    // Large ocean/water plane
+    const waterGeometry = new THREE.PlaneGeometry(SIZE * 2, SIZE * 2, 1, 1);
+    waterGeometry.rotateX(-Math.PI / 2);
+
+    this.waterMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(0x1a3a4a) },
+        uDeepColor: { value: new THREE.Color(0x0a1a2a) },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        uniform float uTime;
+        void main() {
+          vUv = uv;
+          vec3 pos = position;
+          pos.y += sin(pos.x * 0.02 + uTime) * 1.5 + cos(pos.z * 0.015 + uTime * 0.7) * 1.0;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform vec3 uDeepColor;
+        varying vec2 vUv;
+        void main() {
+          vec3 col = mix(uDeepColor, uColor, vUv.y * 0.5 + 0.5);
+          gl_FragColor = vec4(col, 0.85);
+        }
+      `,
+      transparent: true,
+      side: THREE.DoubleSide,
+    });
+
+    this.water = new THREE.Mesh(waterGeometry, this.waterMaterial);
+    this.water.position.y = WATER_LEVEL;
+    this.water.userData.excludeAO = true;
     this.scene.add(this.water);
   }
 
@@ -2618,6 +2675,10 @@ export class Terrain {
   }
 
   checkBuildingCollision(position) {
+    // 3D tile maps: delegate to MapManager for collision
+    if (this.is3DTileMap && this.mapManager) {
+      return this.mapManager.checkBuildingCollision(position);
+    }
     for (const c of this.buildingColliders) {
       const dx = position.x - c.x;
       const dz = position.z - c.z;
@@ -2630,6 +2691,10 @@ export class Terrain {
   }
 
   getHeightAt(x, z) {
+    // 3D tile maps: delegate to MapManager for height
+    if (this.is3DTileMap && this.mapManager) {
+      return this.mapManager.getHeightAt(x, z);
+    }
     const { SIZE, SEGMENTS } = TERRAIN;
     const halfSize = SIZE / 2;
     const gx = ((x + halfSize) / SIZE) * SEGMENTS;
@@ -2651,6 +2716,10 @@ export class Terrain {
   }
 
   checkCollision(position) {
+    // 3D tile maps: delegate to MapManager for collision
+    if (this.is3DTileMap && this.mapManager) {
+      return this.mapManager.checkCollision(position);
+    }
     const terrainHeight = this.getHeightAt(position.x, position.z);
     return position.y < terrainHeight + TERRAIN.COLLISION_MARGIN;
   }

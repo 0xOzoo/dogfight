@@ -24,6 +24,12 @@ import { Balloon } from './entities/Balloon.js';
 import { StaticProp } from './entities/StaticProp.js';
 import { BALLOON, AIRCRAFT, PLANES, MAPS } from './config.js';
 import { LobbyPreview } from './ui/LobbyPreview.js';
+import { MapManager } from './map/MapManager.js';
+
+// Helper: look up the full map config object (including tiles3d) by mapId
+function getMapConfig(mapId) {
+  return MAPS.find(m => m.id === mapId) || null;
+}
 
 // Random default callsigns
 const DEFAULT_CALLSIGNS = [
@@ -32,7 +38,7 @@ const DEFAULT_CALLSIGNS = [
 ];
 
 class Game {
-  constructor(modelTemplate, playerName, mapId, allModels) {
+  constructor(modelTemplate, playerName, mapId, allModels, { deferStart = false } = {}) {
     this.modelTemplate = modelTemplate || null;
     this.playerName = playerName || 'PILOT';
     this.mapId = mapId || 'island';
@@ -49,6 +55,20 @@ class Game {
     this.terrain = new Terrain(this.sceneManager.scene, this.mapId);
     this.sky = new Sky(this.sceneManager.scene);
     this.environment = new Environment(this.sceneManager.scene);
+
+    // 3D tiles map manager (for any map with tiles3d config: NYC, Paris, etc.)
+    this.mapManager = null;
+    this.mapConfig = getMapConfig(this.mapId);
+    this.is3DTileMap = !!(this.mapConfig && this.mapConfig.tiles3d);
+    if (this.is3DTileMap) {
+      this.mapManager = new MapManager(
+        this.sceneManager.scene,
+        this.sceneManager.camera,
+        this.sceneManager.renderer,
+        this.mapConfig.tiles3d
+      );
+      this.terrain.mapManager = this.mapManager;
+    }
 
     // Player
     this.player = new Aircraft(this.sceneManager.scene, this.modelTemplate);
@@ -115,11 +135,18 @@ class Game {
     // Player trail
     this.playerTrail = null;
 
-    // Auto-start: lobby already handled menu selection
-    this.gameState.startGame();
-
-    // Start the game loop
+    // Start the game loop (always runs for rendering, but gameplay waits for startGame)
     this.animate();
+
+    // Auto-start unless deferred (3D tile maps preload first)
+    if (!deferStart) {
+      this.gameState.startGame();
+    }
+  }
+
+  /** Call after preload to actually begin gameplay (for deferred-start games). */
+  start() {
+    this.gameState.startGame();
   }
 
   onGameStart() {
@@ -150,6 +177,15 @@ class Game {
     // Hide HUD container
     document.getElementById('hud').classList.add('hidden');
 
+    // Hide tile loading screen if still visible
+    document.getElementById('tiles-loading-screen').classList.add('hidden');
+
+    // Dispose 3D tile map manager
+    if (this.mapManager) {
+      this.mapManager.dispose();
+      this.mapManager = null;
+    }
+
     // Clean up scene
     while (this.sceneManager.scene.children.length > 0) {
       this.sceneManager.scene.remove(this.sceneManager.scene.children[0]);
@@ -173,6 +209,13 @@ class Game {
     // Reset player
     this.player.reset();
     this.input.reset();
+
+    // 3D tile maps: spawn higher to clear buildings, at configured altitude
+    if (this.is3DTileMap) {
+      const spawnAlt = this.mapConfig.tiles3d.spawnAlt || 800;
+      this.player.position.set(0, spawnAlt, 0);
+      this.player.velocity.set(0, 0, -AIRCRAFT.INITIAL_SPEED);
+    }
 
     // Reset weapons
     this.machineGun.reset();
@@ -234,7 +277,10 @@ class Game {
     const x = Math.cos(angle) * dist;
     const z = Math.sin(angle) * dist;
     const groundH = this.terrain.getHeightAt(x, z);
-    const y = Math.max(groundH + 100, BALLOON.MIN_HEIGHT) + Math.random() * (BALLOON.MAX_HEIGHT - BALLOON.MIN_HEIGHT);
+    // 3D tile maps: balloons higher to clear buildings
+    const minH = this.is3DTileMap ? 700 : BALLOON.MIN_HEIGHT;
+    const maxH = this.is3DTileMap ? 1100 : BALLOON.MAX_HEIGHT;
+    const y = Math.max(groundH + 100, minH) + Math.random() * (maxH - minH);
     const pos = new THREE.Vector3(x, y, z);
     const balloon = new Balloon(this.sceneManager.scene, pos);
     this.balloons.push(balloon);
@@ -260,9 +306,12 @@ class Game {
       const spawnX = this.player.position.x + Math.cos(angle) * dist;
       const spawnZ = this.player.position.z + Math.sin(angle) * dist;
       const groundH = this.terrain.getHeightAt(spawnX, spawnZ);
+      // 3D tile maps: ensure enemies spawn well above buildings
+      const minAlt = this.is3DTileMap ? 600 : 400;
+      const altOffset = this.is3DTileMap ? 400 : 300;
       const pos = new THREE.Vector3(
         spawnX,
-        Math.max(400, groundH + 300) + Math.random() * 300,
+        Math.max(minAlt, groundH + altOffset) + Math.random() * 300,
         spawnZ
       );
 
@@ -455,7 +504,9 @@ class Game {
 
       // Hard altitude floor for AI — runs AFTER physics so it can't be overridden
       const groundH = this.terrain.getHeightAt(enemy.position.x, enemy.position.z);
-      const minAlt = Math.max(groundH + 150, 200);
+      const floorBase = this.is3DTileMap ? 500 : 200;
+      const floorMargin = this.is3DTileMap ? 250 : 150;
+      const minAlt = Math.max(groundH + floorMargin, floorBase);
       if (enemy.position.y < minAlt) {
         enemy.position.y = minAlt;
         if (enemy.velocity.y < 0) enemy.velocity.y = 0;
@@ -600,6 +651,11 @@ class Game {
     this.environment.update(dt);
     this.terrain.update(dt);
 
+    // Update 3D tile streaming (NYC map)
+    if (this.mapManager) {
+      this.mapManager.update();
+    }
+
     // Sky follow camera
     this.sky.update(this.sceneManager.camera.position);
 
@@ -674,9 +730,59 @@ function startGame() {
   }
 
   const modelTemplate = loadedModels[selectedPlaneIndex] || null;
-  const mapId = MAPS[selectedMapIndex].id;
+  const mapCfg = MAPS[selectedMapIndex];
+  const mapId = mapCfg.id;
 
-  gameInstance = new Game(modelTemplate, playerName, mapId, loadedModels);
+  // For 3D tile maps, show loading screen and preload tiles before starting
+  if (mapCfg.tiles3d) {
+    // Show loading overlay
+    const loadingScreen = document.getElementById('tiles-loading-screen');
+    const loadingBar = document.getElementById('tiles-loading-bar');
+    const loadingCity = document.getElementById('tiles-loading-city');
+    loadingScreen.classList.remove('hidden');
+    loadingCity.textContent = `Streaming ${mapCfg.tiles3d.label || mapCfg.name} satellite tiles...`;
+    loadingBar.style.width = '0%';
+
+    // Hide lobby
+    document.getElementById('menu-screen').classList.add('hidden');
+
+    // Create game with deferred start (scene renders but gameplay waits)
+    gameInstance = new Game(modelTemplate, playerName, mapId, loadedModels, { deferStart: true });
+
+    // Animate progress bar based on tile load count
+    const mgr = gameInstance.mapManager;
+    if (mgr) {
+      const progressInterval = setInterval(() => {
+        if (!gameInstance || !gameInstance.mapManager) {
+          clearInterval(progressInterval);
+          return;
+        }
+        const pct = Math.min(100, Math.round((mgr._tilesLoadedCount / mgr._preloadMinTiles) * 100));
+        loadingBar.style.width = pct + '%';
+        if (mgr.preloaded) {
+          clearInterval(progressInterval);
+        }
+      }, 150);
+
+      mgr.preload(mapCfg.tiles3d.spawnAlt || 800).then(() => {
+        loadingBar.style.width = '100%';
+        // Brief pause to let bar fill visually, then start gameplay
+        setTimeout(() => {
+          loadingScreen.classList.add('hidden');
+          if (gameInstance) {
+            gameInstance.start();
+          }
+        }, 400);
+      });
+    } else {
+      // Fallback: no manager somehow, start immediately
+      loadingScreen.classList.add('hidden');
+      gameInstance.start();
+    }
+  } else {
+    // Non-tile maps: start immediately as before
+    gameInstance = new Game(modelTemplate, playerName, mapId, loadedModels);
+  }
 }
 
 window.addEventListener('DOMContentLoaded', () => {

@@ -757,3 +757,61 @@ button:hover {
   70% { opacity: 1; }
   100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 }
+
+/* 3D Tiles loading screen */
+#tiles-loading-screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.92);
+  z-index: 200;
+}
+
+.tiles-loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.tiles-loading-title {
+  font-size: 28px;
+  font-weight: bold;
+  color: #00ff88;
+  letter-spacing: 8px;
+  text-shadow: 0 0 20px rgba(0, 255, 136, 0.4);
+}
+
+.tiles-loading-subtitle {
+  font-size: 14px;
+  color: rgba(0, 255, 136, 0.6);
+  letter-spacing: 2px;
+}
+
+.tiles-loading-bar-bg {
+  width: 320px;
+  height: 4px;
+  background: rgba(0, 255, 136, 0.15);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.tiles-loading-bar {
+  height: 100%;
+  width: 0%;
+  background: #00ff88;
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.5);
+  transition: width 0.3s ease-out;
+}
+
+.tiles-loading-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  letter-spacing: 1px;
+}

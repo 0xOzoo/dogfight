@@ -212,6 +212,17 @@
       <p id="gameover-score"></p>
       <button id="restart-btn">RESTART</button>
     </div>
+
+    <div id="tiles-loading-screen" class="hidden">
+      <div class="tiles-loading-content">
+        <div class="tiles-loading-title">LOADING 3D CITY</div>
+        <div class="tiles-loading-subtitle" id="tiles-loading-city">Streaming satellite tiles...</div>
+        <div class="tiles-loading-bar-bg">
+          <div class="tiles-loading-bar" id="tiles-loading-bar"></div>
+        </div>
+        <div class="tiles-loading-hint">Downloading geometry around spawn zone</div>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="src/main.js"></script>
